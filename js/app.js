@@ -130,11 +130,13 @@
     const spec = currentSpec();
     const r = PRODUCTS.render3d(spec);
     const doublePrint = spec.productType === "banner" && spec.values.printSide === "double";
+    const channel = spec.productType === "sign" && (r.letter === "front" || r.letter === "halo");
     Preview3D.build({
       widthMM: spec.widthMM, heightMM: spec.heightMM,
       material: r.material, boardColor: spec.values.boardColor, thickness: r.depthMM,
       backDesign: doublePrint,
       base: r.base || "flat", letter: r.letter || "none", install: r.install || "none",
+      letters: channel ? Editor.getTextObjects("front") : null,
     });
     Preview3D.refresh();
     updateQuote(spec);
@@ -220,7 +222,7 @@
       document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
       tab.classList.add("active");
       $(tab.dataset.view === "edit" ? "editView" : "view3d").classList.add("active");
-      if (tab.dataset.view === "view3d") { Editor.deselectAll(); setTimeout(() => Preview3D.onShow(), 30); }
+      if (tab.dataset.view === "view3d") { Editor.deselectAll(); updateAll(); setTimeout(() => Preview3D.onShow(), 30); }
     })
   );
 

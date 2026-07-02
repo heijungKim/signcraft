@@ -120,6 +120,25 @@ window.Editor = (function () {
     sides.back.loadFromJSON(json, () => { sides.back.renderAll(); fire(); });
   }
 
+  // 3D 입체 채널 글자용 — 텍스트 개체를 캔버스 비율 좌표로 반환
+  function getTextObjects(side) {
+    const c = sides[side || "front"];
+    const Wc = c.getWidth(), Hc = c.getHeight();
+    return c.getObjects()
+      .filter((o) => o.type === "textbox" || o.type === "text" || o.type === "i-text")
+      .map((o) => {
+        const r = o.getBoundingRect(true, true);
+        return {
+          text: o.text || "",
+          cxFrac: (r.left + r.width / 2) / Wc,
+          cyFrac: (r.top + r.height / 2) / Hc,
+          hFrac: (o.fontSize * (o.scaleY || 1)) / Hc,
+          fill: typeof o.fill === "string" ? o.fill : "#222222",
+          angle: o.angle || 0,
+        };
+      });
+  }
+
   function getElement(side) { return sides[side || "front"].getElement(); }
   function getCanvas(side) { return sides[side || active]; }
   function toSVG(side) { return sides[side || active].toSVG(); }
@@ -128,6 +147,6 @@ window.Editor = (function () {
   return {
     init, setActiveSide, getActiveSide, setSize, setBg, setBgBoth,
     addText, addShape, addImage, applyToSelection, deselectAll, deleteSelection, copyFrontToBack,
-    getElement, getCanvas, toSVG, toDataURL,
+    getElement, getCanvas, getTextObjects, toSVG, toDataURL,
   };
 })();

@@ -6,6 +6,7 @@ window.Preview3D = (function () {
   let sourceCanvasEl = null, sourceCanvasBackEl = null;
   let currentSpec = null;
   let maxAniso = 1, lastTexW = 0, lastTexH = 0;
+  let font = null; // 3D 채널 글자용 폰트(영문/숫자)
 
   function init(canvasEl, canvasBackEl) {
     sourceCanvasEl = canvasEl;
@@ -68,6 +69,14 @@ window.Preview3D = (function () {
     rg.addColorStop(1, "rgba(255,255,255,0)");
     gx.fillStyle = rg; gx.fillRect(0, 0, 256, 256);
     glowTex = new THREE.CanvasTexture(gc);
+
+    // 입체 채널 글자용 폰트 로드(비동기) — 로드되면 현재 스펙으로 재빌드
+    try {
+      new THREE.FontLoader().load(
+        "https://cdn.jsdelivr.net/npm/three@0.136.0/examples/fonts/helvetiker_bold.typeface.json",
+        (f) => { font = f; if (currentSpec) build(currentSpec); }
+      );
+    } catch (e) { /* 폰트 로드 실패해도 평면으로 진행 */ }
 
     window.addEventListener("resize", onResize);
     inited = true;
@@ -158,27 +167,39 @@ window.Preview3D = (function () {
       geo = new THREE.BoxGeometry(pw, ph, d);
     }
 
-    const faceMat = materialParams(spec, texture);
     const sideColor = new THREE.Color(spec.material === "stainless" || spec.material === "mirror" ? 0xbfc6cf : (spec.boardColor || "#dddddd"));
     const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.5, metalness: spec.material === "stainless" ? 0.8 : 0.1 });
-    const backMat = spec.backDesign ? materialParams(spec, textureBack) : sideMat;
 
-    // 발광(면발광/앞면발광/후광) 파라미터
-    let frontEmissive = 0, haloOpacity = 0, haloColor = 0xffffff;
-    if (base === "flex") frontEmissive = 0.55;
-    else if (base === "panel") frontEmissive = 0.95;
-    else if (base === "round") frontEmissive = 0.85;
-    else if (base === "cube") frontEmissive = 0.95;
-    else if (base === "truss") frontEmissive = 0.45;
-    if (letter === "front") frontEmissive = Math.max(frontEmissive, 1.35);            // 앞면발광 채널
-    if (letter === "halo") { haloOpacity = 0.95; haloColor = 0xfff2d6; frontEmissive = Math.min(frontEmissive, 0.18); } // 후광 채널
+    // 채널 글자(영문/숫자) 사용 여부 판단
+    const wantChannel = (letter === "front" || letter === "halo") && spec.letters && font;
+    const chLetters = wantChannel ? extrudableLetters(spec.letters) : [];
+    const useChannel = chLetters.length > 0;
 
-    if (frontEmissive > 0) {
-      faceMat.emissive = new THREE.Color(0xffffff);
-      faceMat.emissiveMap = texture;
-      faceMat.emissiveIntensity = frontEmissive;
-      faceMat.needsUpdate = true;
+    const baseEmissive = { flex: 0.55, panel: 0.95, round: 0.85, cube: 0.95, truss: 0.45 }[base] || 0;
+    let haloOpacity = 0; const haloColor = 0xfff2d6;
+    if (letter === "halo") haloOpacity = 0.95;
+
+    // 전면 재질: 채널이면 디자인 없는 깔끔한 바탕색 배커, 아니면 디자인 텍스처
+    let faceMat;
+    if (useChannel) {
+      const bc = new THREE.Color(spec.boardColor || "#dddddd");
+      faceMat = new THREE.MeshStandardMaterial({
+        color: bc, roughness: 0.5, metalness: 0.1,
+        emissive: bc, emissiveIntensity: letter === "halo" ? 0.1 : baseEmissive * 0.45,
+      });
+    } else {
+      faceMat = materialParams(spec, texture);
+      let fe = baseEmissive;
+      if (letter === "front") fe = Math.max(fe, 1.35);
+      if (letter === "halo") fe = Math.min(fe, 0.18);
+      if (fe > 0) {
+        faceMat.emissive = new THREE.Color(0xffffff);
+        faceMat.emissiveMap = texture;
+        faceMat.emissiveIntensity = fe;
+        faceMat.needsUpdate = true;
+      }
     }
+    const backMat = spec.backDesign ? materialParams(spec, textureBack) : sideMat;
 
     if (kind === "cube") {
       const capMat = new THREE.MeshStandardMaterial({ color: 0xeef1f6, roughness: 0.4, emissive: 0xffffff, emissiveIntensity: 0.5 });
@@ -211,8 +232,55 @@ window.Preview3D = (function () {
     // 트러스바 지지 구조
     if (base === "truss") addTruss(pw, ph, d);
 
+    // 입체 채널 글자(영문/숫자)
+    if (useChannel) addChannelLetters(spec, pw, ph, d, chLetters);
+
     scene.add(signGroup);
     applyMounting(spec, pw, ph, d);
+  }
+
+  // 폰트로 압출 가능한(영문/숫자) 텍스트만 추린 목록
+  function extrudableLetters(letters) {
+    const glyphs = (font && font.data.glyphs) || {};
+    const ok = (ch) => ch === " " || !!glyphs[ch];
+    return letters
+      .map((L) => ({ ...L, txt: [...(L.text || "")].filter(ok).join("").replace(/\s+$/g, "") }))
+      .filter((L) => L.txt.trim().length);
+  }
+
+  // 텍스트 개체를 실제 3D 압출 채널 글자로 생성
+  function addChannelLetters(spec, pw, ph, d, chLetters) {
+    const depth3d = Math.min(0.24, d * 1.4 + 0.13);
+    const front = spec.letter === "front";
+
+    chLetters.forEach((L) => {
+      const size = Math.max(0.06, L.hFrac * ph * 0.92);
+      let geo;
+      try {
+        geo = new THREE.TextGeometry(L.txt, {
+          font, size, height: depth3d, curveSegments: 5,
+          bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.008, bevelSegments: 1,
+        });
+      } catch (e) { return; }
+      geo.center();
+
+      const col = new THREE.Color(L.fill || "#222222");
+      const lum = 0.299 * col.r + 0.587 * col.g + 0.114 * col.b;
+      let mat;
+      if (front) {
+        // 앞면발광: 글자 면이 발광(어두운 색이면 흰빛)
+        const emis = lum < 0.2 ? new THREE.Color(0xffffff) : col;
+        mat = new THREE.MeshStandardMaterial({ color: col, emissive: emis, emissiveIntensity: 0.95, roughness: 0.3, metalness: 0.0 });
+      } else {
+        // 후광 채널: 불투명 글자(뒤 후광으로 백라이트 실루엣)
+        mat = new THREE.MeshStandardMaterial({ color: 0x232323, roughness: 0.5, metalness: 0.25 });
+      }
+
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set((L.cxFrac - 0.5) * pw, (0.5 - L.cyFrac) * ph, d / 2 + depth3d / 2);
+      m.rotation.z = -L.angle * Math.PI / 180;
+      signGroup.add(m);
+    });
   }
 
   // 라운드(오사이) 발광 박스 — 모서리 둥근 사각을 압출
