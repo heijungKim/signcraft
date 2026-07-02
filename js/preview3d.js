@@ -228,9 +228,10 @@ window.Preview3D = (function () {
     const chLetters = wantChannel ? extrudableLetters(spec.letters) : [];
     const useChannel = chLetters.length > 0;
 
-    // 후광(발광) 표시: 후광채널 또는 발광 베이스(면발광/라운드/큐브) — 색상은 조명색상 옵션을 따름
+    // 후광(발광) 표시: 채널 글자가 있으면 글자별 후광(addChannelLetters)만 사용하고,
+    // 글자가 없거나(문구 미입력) 발광 베이스(면발광/라운드/큐브)면 패널 전체에 은은한 발광판을 깐다.
     let haloOpacity = 0, haloColor = spec.lightColor || 0xffffff;
-    if (letter === "halo") haloOpacity = 0.95;
+    if (letter === "halo") haloOpacity = useChannel ? 0 : 0.95;
     else if (base === "panel" || base === "round" || base === "cube") haloOpacity = 0.4;
 
     // 전면 재질: 채널이면 바탕색 배커, 아니면 디자인 텍스처(디자인 색 그대로 = 무광 평면)
@@ -329,7 +330,9 @@ window.Preview3D = (function () {
   // 텍스트 개체를 실제 3D 압출 채널 글자로 생성(한글/영문)
   function addChannelLetters(spec, pw, ph, d, chLetters) {
     const front = spec.letter === "front";
+    const halo = spec.letter === "halo";
     const depth3d = Math.min(0.26, d * 1.4 + 0.14);
+    const glowColor = spec.lightColor || 0xfff2d6;
 
     chLetters.forEach((L) => {
       // 에디터 폰트에 맞는 TTF 사용(없으면 기본 폰트로 임시 렌더 후 로드되면 교체)
@@ -351,10 +354,34 @@ window.Preview3D = (function () {
         const geo = buildTextGeometry(line, targetEm, depth3d, otFont);
         if (!geo) return;
         const cyFrac = L.topFrac + (i + 0.5) * L.lineHFrac;
+        const px = (L.cxFrac - 0.5) * pw, py = (0.5 - cyFrac) * ph;
+        const angle = -L.angle * Math.PI / 180;
         const m = new THREE.Mesh(geo, mat);
-        m.position.set((L.cxFrac - 0.5) * pw, (0.5 - cyFrac) * ph, d / 2 + depth3d / 2);
-        m.rotation.z = -L.angle * Math.PI / 180;
+        m.position.set(px, py, d / 2 + depth3d / 2);
+        m.rotation.z = angle;
         signGroup.add(m);
+
+        // 후광 채널: 단어 전체가 아니라 낱글자 하나하나 뒤에서 개별적으로 빛이 새어나오도록 글자 단위로 배치
+        if (halo) {
+          const totalAdv = otFont.getAdvanceWidth(line, targetEm);
+          const cosA = Math.cos(angle), sinA = Math.sin(angle);
+          const gh = targetEm * 1.35;
+          let adv = 0;
+          for (const ch of line) {
+            const w = otFont.getAdvanceWidth(ch, targetEm);
+            if (ch.trim()) {
+              const cx = adv + w / 2 - totalAdv / 2; // 줄 중앙 기준 낱글자 위치(센터링과 동일 기준)
+              const glow = new THREE.Mesh(
+                new THREE.PlaneGeometry(w + targetEm * 0.32, gh),
+                new THREE.MeshBasicMaterial({ map: glowTex, color: glowColor, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })
+              );
+              glow.position.set(px + cx * cosA, py + cx * sinA, d / 2 + 0.01); // 패널 표면 바로 앞 — 글자가 그 위를 덮어 가장자리만 번짐
+              glow.rotation.z = angle;
+              signGroup.add(glow);
+            }
+            adv += w;
+          }
+        }
       });
     });
   }
