@@ -1,6 +1,6 @@
 /* ===== 360° 3D 미리보기 (Three.js) ===== */
 window.Preview3D = (function () {
-  let renderer, scene, camera, controls, mesh, texture, textureBack, edgeMesh, glowMesh, glowTex;
+  let renderer, scene, camera, controls, mesh, texture, textureBack, edgeMesh, glowMesh, glowTex, concreteTex;
   let signGroup = null, props = [];
   let wrap, inited = false;
   let sourceCanvasEl = null, sourceCanvasBackEl = null;
@@ -89,6 +89,29 @@ window.Preview3D = (function () {
     rg.addColorStop(1, "rgba(255,255,255,0)");
     gx.fillStyle = rg; gx.fillRect(0, 0, 256, 256);
     glowTex = new THREE.CanvasTexture(gc);
+
+    // 시멘트(콘크리트) 질감 텍스처 — 회색 얼룩/노이즈
+    const cc = document.createElement("canvas"); cc.width = cc.height = 256;
+    const cx2 = cc.getContext("2d");
+    cx2.fillStyle = "#9096"; cx2.fillStyle = "#8f949b"; cx2.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 9000; i++) {
+      const x = Math.random() * 256, y = Math.random() * 256;
+      const v = 128 + (Math.random() - 0.5) * 70; // 밝기 편차
+      const a = 0.05 + Math.random() * 0.12;
+      cx2.fillStyle = `rgba(${v | 0},${v | 0},${(v * 1.02) | 0},${a.toFixed(2)})`;
+      cx2.fillRect(x, y, 1 + Math.random() * 2, 1 + Math.random() * 2);
+    }
+    // 큰 얼룩(콘크리트 반점)
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random() * 256, y = Math.random() * 256, r = 6 + Math.random() * 26;
+      const g = cx2.createRadialGradient(x, y, 0, x, y, r);
+      const dark = Math.random() < 0.5;
+      g.addColorStop(0, dark ? "rgba(70,74,80,0.18)" : "rgba(190,194,200,0.15)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      cx2.fillStyle = g; cx2.beginPath(); cx2.arc(x, y, r, 0, Math.PI * 2); cx2.fill();
+    }
+    concreteTex = new THREE.CanvasTexture(cc);
+    concreteTex.wrapS = concreteTex.wrapT = THREE.RepeatWrapping;
 
     window.addEventListener("resize", onResize);
     inited = true;
@@ -348,7 +371,13 @@ window.Preview3D = (function () {
   function applyMounting(spec, pw, ph, depth) {
     const install = spec.install || "wall";
     const metal = () => new THREE.MeshStandardMaterial({ color: 0x2f343b, metalness: 0.75, roughness: 0.4 });
-    const concrete = () => new THREE.MeshStandardMaterial({ color: 0x8b929c, roughness: 0.95, metalness: 0 });
+    const concrete = () => {
+      if (concreteTex) concreteTex.repeat.set(3, 2.6);
+      return new THREE.MeshStandardMaterial({
+        color: 0x7f848a, roughness: 1.0, metalness: 0,
+        map: concreteTex, bumpMap: concreteTex, bumpScale: 0.05,
+      });
+    };
     const addProp = (m) => { scene.add(m); props.push(m); };
 
     if (install === "protrude") {
