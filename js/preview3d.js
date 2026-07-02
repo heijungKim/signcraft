@@ -387,6 +387,16 @@ window.Preview3D = (function () {
       const targetEm = Math.max(0.04, L.emFrac * ph); // 폰트 크기(em) = 에디터와 동일
       const col = new THREE.Color(L.fill || "#222222");
       const lum = 0.299 * col.r + 0.587 * col.g + 0.114 * col.b;
+      // 에디터 웹폰트와 3D 압출용 CDN TTF의 글자폭 메트릭이 달라 폭이 어긋날 수 있어,
+      // 에디터에서 실측한 텍스트 폭(widthFrac)에 맞춰 폰트 크기를 보정(높이 대비 폭 과다 방지)
+      let correctedEm = targetEm;
+      if (L.widthFrac) {
+        const widest = L.lines.reduce((mx, ln) => Math.max(mx, otFont.getAdvanceWidth(ln, targetEm)), 0);
+        const desiredW = L.widthFrac * pw;
+        if (widest > 1e-4 && desiredW > 1e-4) {
+          correctedEm = targetEm * Math.min(2.5, Math.max(0.3, desiredW / widest));
+        }
+      }
       // 앞면발광: 글자 얼굴 자체가 은은히 빛남(블룸으로 번짐). 후광채널: 얼굴은 장면 조명의 영향을 받지 않는
       // unlit 재질로 지정한 글자색 그대로만 보이게 하고(밝게 뜨지 않음), 실제 후광은 별도 발광 실루엣만 담당.
       const mat = front
@@ -396,7 +406,7 @@ window.Preview3D = (function () {
       // 자동 줄바꿈된 각 줄을 위→아래로 배치(에디터 레이아웃과 동일)
       L.lines.forEach((line, i) => {
         if (!line.trim()) return;
-        const geo = buildTextGeometry(line, targetEm, depth3d, otFont);
+        const geo = buildTextGeometry(line, correctedEm, depth3d, otFont);
         if (!geo) return;
         const cyFrac = L.topFrac + (i + 0.5) * L.lineHFrac;
         const px = (L.cxFrac - 0.5) * pw, py = (0.5 - cyFrac) * ph;
@@ -409,7 +419,7 @@ window.Preview3D = (function () {
 
         // 후광 채널: 글자와 같은 모양(살짝 확대)의 발광 실루엣만 얼굴 바로 뒤에 배치 — 이 실루엣만 블룸 대상
         if (halo) {
-          const glowGeo = buildTextGeometry(line, targetEm * 1.16, depth3d * 0.25, otFont);
+          const glowGeo = buildTextGeometry(line, correctedEm * 1.16, depth3d * 0.25, otFont);
           if (glowGeo) {
             const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ color: glowColor }));
             glow.position.set(px, py, d / 2 + 0.015);

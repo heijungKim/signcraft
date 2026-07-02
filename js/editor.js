@@ -151,6 +151,7 @@ window.Editor = (function () {
           topFrac: r.top / Hc,                            // 윗변 y
           lineHFrac: lineH / Hc,                          // 줄 높이
           emFrac: (o.fontSize * (o.scaleY || 1)) / Hc,    // 폰트 크기(em) = 3D 글자 크기
+          widthFrac: r.width / Wc,                        // 실제 렌더된 텍스트 폭(3D 압출 폰트와 실측 보정용)
           fill: typeof o.fill === "string" ? o.fill : "#222222",
           angle: o.angle || 0,
           fontFamily: o.fontFamily || "Noto Sans KR",
