@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>사인크래프트 — 간판·아크릴 견적 에디터</title>
+
+  <!-- Google Fonts (에디터/출력용) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Nanum+Gothic:wght@400;700;800&family=Black+Han+Sans&family=Jua&family=Do+Hyeon&family=Gowun+Dodum&family=Montserrat:wght@400;700;900&family=Bebas+Neue&display=swap" rel="stylesheet" />
+
+  <!-- Fabric.js (2D 에디터 + SVG 벡터 출력) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <!-- Three.js UMD (360° 3D 미리보기) — examples/js 포함 버전 사용 -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.136.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.136.0/examples/js/controls/OrbitControls.js"></script>
+
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◧</span>
+      <div>
+        <strong>사인크래프트</strong>
+        <small>간판 · 아크릴 현수막 견적 에디터</small>
+      </div>
+    </div>
+    <nav class="steps">
+      <span class="step active">1. 디자인</span>
+      <span class="step">2. 미리보기</span>
+      <span class="step">3. 견적·요청</span>
+    </nav>
+  </header>
+
+  <main class="workspace">
+    <!-- ===== 좌측: 컨트롤 패널 ===== -->
+    <aside class="panel panel-left">
+      <section class="group">
+        <h3>제품 · 재질</h3>
+        <label>제품 종류
+          <select id="productType">
+            <option value="acrylic">아크릴 간판</option>
+            <option value="banner">현수막(배너)</option>
+            <option value="channel">채널(입체) 간판</option>
+            <option value="metal">금속 간판</option>
+          </select>
+        </label>
+        <label>재질
+          <select id="material">
+            <option value="clear">투명 아크릴</option>
+            <option value="milky">유백 아크릴</option>
+            <option value="color">컬러 아크릴</option>
+            <option value="mirror">미러(거울) 아크릴</option>
+            <option value="stainless">스테인리스</option>
+            <option value="wood">우드(목재)</option>
+          </select>
+        </label>
+        <label>바탕 색상 <input type="color" id="boardColor" value="#f4f4f4" /></label>
+        <label>두께
+          <select id="thickness">
+            <option value="3">3mm</option>
+            <option value="5" selected>5mm</option>
+            <option value="8">8mm</option>
+            <option value="10">10mm</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="group">
+        <h3>크기 (mm)</h3>
+        <div class="row">
+          <label>가로 <input type="number" id="widthMM" value="600" min="50" step="10" /></label>
+          <label>세로 <input type="number" id="heightMM" value="300" min="50" step="10" /></label>
+        </div>
+        <div class="presets">
+          <button data-w="600" data-h="300">600×300</button>
+          <button data-w="900" data-h="600">900×600</button>
+          <button data-w="1200" data-h="600">1200×600</button>
+          <button data-w="1800" data-h="900">1800×900</button>
+        </div>
+      </section>
+
+      <section class="group">
+        <h3>텍스트</h3>
+        <textarea id="textInput" rows="2" placeholder="문구를 입력하세요">OPEN</textarea>
+        <button class="btn full" id="addText">+ 텍스트 추가</button>
+        <div class="row">
+          <label>폰트
+            <select id="fontFamily">
+              <option value="Black Han Sans">검은고딕</option>
+              <option value="Noto Sans KR">노토산스</option>
+              <option value="Nanum Gothic">나눔고딕</option>
+              <option value="Jua">주아</option>
+              <option value="Do Hyeon">도현</option>
+              <option value="Gowun Dodum">고운돋움</option>
+              <option value="Montserrat">Montserrat</option>
+              <option value="Bebas Neue">Bebas Neue</option>
+            </select>
+          </label>
+          <label>크기 <input type="number" id="fontSize" value="72" min="8" step="2" /></label>
+        </div>
+        <div class="row">
+          <label>글자색 <input type="color" id="fontColor" value="#111111" /></label>
+          <label class="chk"><input type="checkbox" id="fontBold" /> 굵게</label>
+        </div>
+      </section>
+
+      <section class="group">
+        <h3>도형 · 이미지</h3>
+        <div class="presets">
+          <button id="addRect">□ 사각형</button>
+          <button id="addCircle">○ 원</button>
+          <button id="addLine">— 선</button>
+        </div>
+        <label class="upload">이미지 업로드(로고)
+          <input type="file" id="imgUpload" accept="image/*" />
+        </label>
+        <button class="btn danger full" id="deleteSel">선택 삭제</button>
+      </section>
+    </aside>
+
+    <!-- ===== 중앙: 에디터 / 3D ===== -->
+    <section class="stage">
+      <div class="stage-tabs">
+        <button class="tab active" data-view="edit">✎ 에디터</button>
+        <button class="tab" data-view="view3d">◉ 360° 미리보기</button>
+      </div>
+
+      <div class="stage-body">
+        <div id="editView" class="view active">
+          <div class="canvas-wrap">
+            <canvas id="designCanvas" width="800" height="400"></canvas>
+          </div>
+          <p class="hint">개체를 드래그해 위치·크기·회전 조절 · 실제 비율로 표시됩니다</p>
+        </div>
+
+        <div id="view3d" class="view">
+          <div id="threeWrap"></div>
+          <p class="hint">마우스 드래그: 360° 회전 · 휠: 확대/축소 · 우클릭 드래그: 이동</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 우측: 견적 / 출력 ===== -->
+    <aside class="panel panel-right">
+      <section class="group">
+        <h3>실시간 견적</h3>
+        <div class="quote-line"><span>면적</span><b id="qArea">—</b></div>
+        <div class="quote-line"><span>재질/두께</span><b id="qMaterial">—</b></div>
+        <div class="quote-line"><span>제작비</span><b id="qBase">—</b></div>
+        <div class="quote-line"><span>옵션(가공)</span><b id="qOption">—</b></div>
+        <hr />
+        <div class="quote-total"><span>예상 견적(VAT 별도)</span><b id="qTotal">₩0</b></div>
+        <label class="chk small"><input type="checkbox" id="optCut" /> 재단/절곡 가공 (+15%)</label>
+        <label class="chk small"><input type="checkbox" id="optLed" /> LED 조명 추가 (+₩45,000)</label>
+        <label>수량
+          <input type="number" id="qty" value="1" min="1" />
+        </label>
+      </section>
+
+      <section class="group">
+        <h3>벡터 파일 출력</h3>
+        <p class="small muted">일러스트레이터에서 열리는 벡터(SVG) 파일로 출력됩니다.</p>
+        <button class="btn full" id="exportSVG">⬇ SVG 벡터 다운로드 (일러스트용)</button>
+        <button class="btn ghost full" id="exportPNG">⬇ PNG 이미지 다운로드</button>
+      </section>
+
+      <section class="group">
+        <h3>제작 요청</h3>
+        <button class="btn primary full" id="requestBtn">🖨 이 디자인으로 제작 요청</button>
+      </section>
+    </aside>
+  </main>
+
+  <!-- 제작 요청 모달 -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <button class="modal-close" id="modalClose">×</button>
+      <h2>제작 요청서</h2>
+      <div class="order-grid" id="orderSummary"></div>
+      <label>요청자 이름 <input type="text" id="reqName" placeholder="홍길동" /></label>
+      <label>연락처 / 이메일 <input type="text" id="reqContact" placeholder="010-0000-0000 / email@..." /></label>
+      <label>요청사항 <textarea id="reqMemo" rows="2" placeholder="추가 요청사항"></textarea></label>
+      <div class="modal-actions">
+        <button class="btn primary" id="submitReq">📦 벡터파일 + 요청서 다운로드</button>
+        <button class="btn ghost" id="mailReq">✉ 이메일로 보내기</button>
+      </div>
+      <p class="small muted">제출 시 벡터(SVG) 원본과 사양서(JSON)가 함께 다운로드됩니다.</p>
+    </div>
+  </div>
+
+  <script src="js/quote.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/preview3d.js"></script>
+  <script src="js/exporter.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
