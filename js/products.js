@@ -70,11 +70,28 @@ window.PRODUCTS = (function () {
       baseRate: 150000,
       size: { w: 900, h: 600 },
       presets: [[900, 600], [1200, 800], [1800, 900], [2400, 1200]],
+      // 빠른 조합 프리셋(베이스 + 레터링) — 클릭 시 아래 옵션이 세팅됨
+      combos: [
+        { label: "후렉스 간판", set: { base: "flex", letter: "none" } },
+        { label: "후렉스＋채널", set: { base: "flex", letter: "front" } },
+        { label: "트러스＋알루미늄채널", set: { base: "truss", letter: "front" } },
+        { label: "갈바프레임＋면발광", set: { base: "panel", letter: "none" } },
+        { label: "갈바 후광채널", set: { base: "panel", letter: "halo" } },
+        { label: "갈바 라운드채널", set: { base: "round", letter: "halo" } },
+        { label: "큐브 간판", set: { base: "cube", letter: "none" } },
+      ],
       fields: [
-        { id: "signType", label: "간판 종류", type: "select", def: "flat", options: [
-          { v: "flat", t: "평판 간판" },
-          { v: "channel", t: "채널(입체) 간판 +60%", mult: 1.6 },
-          { v: "frame", t: "후레임 간판 +30%", mult: 1.3 },
+        { id: "base", label: "베이스 구조", type: "select", def: "flex", options: [
+          { v: "flex", t: "후렉스(실사출력 박스)", rate: 130000 },
+          { v: "panel", t: "갈바프레임 면발광", rate: 200000 },
+          { v: "round", t: "오사이 라운드 발광", rate: 240000 },
+          { v: "truss", t: "트러스바 패널", rate: 210000 },
+          { v: "cube", t: "큐브 간판", rate: 270000 },
+        ]},
+        { id: "letter", label: "레터링(글자)", type: "select", def: "none", options: [
+          { v: "none", t: "바탕 인쇄만" },
+          { v: "front", t: "앞면발광 채널 +45%", mult: 1.45 },
+          { v: "halo", t: "후광(백라이트) 채널 +60%", mult: 1.6 },
         ]},
         { id: "material", label: "표면 재질", type: "select", def: "milky", options: [
           { v: "milky", t: "아크릴(유백)", mult: 1 },
@@ -82,15 +99,10 @@ window.PRODUCTS = (function () {
           { v: "stainless", t: "스테인리스", mult: 1.8 },
           { v: "wood", t: "우드(목재)", mult: 1.2 },
         ]},
-        { id: "boardColor", label: "바탕 색상", type: "color", def: "#2a2f39" },
+        { id: "boardColor", label: "바탕 색상", type: "color", def: "#1b3fb0" },
         { id: "thickness", label: "두께(전면판)", type: "select", def: "8", options: [
           { v: "5", t: "5mm", mult: 1 }, { v: "8", t: "8mm", mult: 1.15 },
           { v: "10", t: "10mm", mult: 1.3 }, { v: "15", t: "15mm", mult: 1.6 },
-        ]},
-        { id: "lighting", label: "조명", type: "select", def: "none", options: [
-          { v: "none", t: "무조명" },
-          { v: "led", t: "LED 모듈 +45,000", add: 45000 },
-          { v: "neon", t: "네온플렉스 +80,000", add: 80000 },
         ]},
         { id: "install", label: "시공 방식", type: "select", def: "wall", options: [
           { v: "wall", t: "벽 부착" },
@@ -117,12 +129,20 @@ window.PRODUCTS = (function () {
       });
   }
 
-  // 3D 미리보기용 재질/두께 매핑
+  // 3D 미리보기용 재질/두께/구조 매핑
   function render3d(spec) {
     const v = spec.values;
     if (spec.productType === "banner") return { material: "fabric", depthMM: 2 };
     let depth = +(v.thickness || 5);
-    if (spec.productType === "sign" && v.signType === "channel") depth = 40; // 입체감
+    if (spec.productType === "sign") {
+      return {
+        material: v.material || "milky",
+        depthMM: depth,
+        base: v.base || "flex",
+        letter: v.letter || "none",
+        install: v.install || "wall",
+      };
+    }
     return { material: v.material || "milky", depthMM: depth };
   }
 

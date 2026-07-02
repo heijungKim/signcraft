@@ -1,6 +1,7 @@
 /* ===== 360° 3D 미리보기 (Three.js) ===== */
 window.Preview3D = (function () {
   let renderer, scene, camera, controls, mesh, texture, textureBack, edgeMesh, glowMesh, glowTex;
+  let signGroup = null, props = [];
   let wrap, inited = false;
   let sourceCanvasEl = null, sourceCanvasBackEl = null;
   let currentSpec = null;
@@ -128,51 +129,195 @@ window.Preview3D = (function () {
     currentSpec = spec;
     if (!inited) return;
     ensureTextures(false);
-    disposeMesh(mesh); mesh = null;
-    disposeMesh(edgeMesh); edgeMesh = null;
-    disposeMesh(glowMesh); glowMesh = null;
+    clearScene();
 
     // 실제 비율 유지: 긴 변을 3 유닛으로 정규화
     const ratio = spec.widthMM / spec.heightMM;
     let pw, ph;
     if (ratio >= 1) { pw = 3.2; ph = 3.2 / ratio; } else { ph = 3.2; pw = 3.2 * ratio; }
-    const depth = Math.max(0.04, (spec.thickness / 1000) * 6); // 두께 시각화
 
-    const geo = new THREE.BoxGeometry(pw, ph, depth);
+    signGroup = new THREE.Group();
+
+    const base = spec.base || "flat";
+    const letter = spec.letter || "none";
+
+    // 베이스 구조별 두께/형상
+    let d = Math.max(0.04, (spec.thickness / 1000) * 6);
+    if (base === "flex" || base === "panel" || base === "truss") d = Math.max(d, 0.13);
+    if (base === "round") d = Math.max(d, 0.24);
+
+    let geo, kind = "box";
+    if (base === "cube") {
+      const cs = Math.min(Math.max(pw, ph), 2.4);
+      pw = ph = cs; d = cs; kind = "cube";
+      geo = new THREE.BoxGeometry(cs, cs, cs);
+    } else if (base === "round") {
+      kind = "round";
+      geo = roundedPanel(pw, ph, d);
+    } else {
+      geo = new THREE.BoxGeometry(pw, ph, d);
+    }
+
     const faceMat = materialParams(spec, texture);
     const sideColor = new THREE.Color(spec.material === "stainless" || spec.material === "mirror" ? 0xbfc6cf : (spec.boardColor || "#dddddd"));
     const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.5, metalness: spec.material === "stainless" ? 0.8 : 0.1 });
-
-    // 양면 인쇄면 → 뒷면에도 (좌우 반전) 디자인 복제, 아니면 바탕색
     const backMat = spec.backDesign ? materialParams(spec, textureBack) : sideMat;
 
-    // BoxGeometry material order: +x,-x,+y,-y,+z(front),-z(back)
-    mesh = new THREE.Mesh(geo, [sideMat, sideMat, sideMat, sideMat, faceMat, backMat]);
-    scene.add(mesh);
+    // 발광(면발광/앞면발광/후광) 파라미터
+    let frontEmissive = 0, haloOpacity = 0, haloColor = 0xffffff;
+    if (base === "flex") frontEmissive = 0.55;
+    else if (base === "panel") frontEmissive = 0.95;
+    else if (base === "round") frontEmissive = 0.85;
+    else if (base === "cube") frontEmissive = 0.95;
+    else if (base === "truss") frontEmissive = 0.45;
+    if (letter === "front") frontEmissive = Math.max(frontEmissive, 1.35);            // 앞면발광 채널
+    if (letter === "halo") { haloOpacity = 0.95; haloColor = 0xfff2d6; frontEmissive = Math.min(frontEmissive, 0.18); } // 후광 채널
 
-    // 외곽선
-    const edges = new THREE.EdgesGeometry(geo);
-    edgeMesh = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.12, transparent: true }));
-    scene.add(edgeMesh);
-
-    // 조명 효과(LED/네온) — 글자(디자인) 자체 발광 + 뒤쪽 후광
-    if (spec.lighting === "led" || spec.lighting === "neon") {
-      const neon = spec.lighting === "neon";
+    if (frontEmissive > 0) {
       faceMat.emissive = new THREE.Color(0xffffff);
       faceMat.emissiveMap = texture;
-      faceMat.emissiveIntensity = neon ? 1.6 : 0.7;
+      faceMat.emissiveIntensity = frontEmissive;
       faceMat.needsUpdate = true;
+    }
 
-      const glowColor = neon ? 0xff3df0 : 0xffdca6; // 네온: 핑크, LED: 웜화이트
-      const glowGeo = new THREE.PlaneGeometry(pw * 1.6, ph * 2.4);
+    if (kind === "cube") {
+      const capMat = new THREE.MeshStandardMaterial({ color: 0xeef1f6, roughness: 0.4, emissive: 0xffffff, emissiveIntensity: 0.5 });
+      // +x,-x,+y(top),-y(bottom),+z,-z → 4 옆면에 디자인
+      mesh = new THREE.Mesh(geo, [faceMat, faceMat, capMat, capMat, faceMat, faceMat]);
+    } else if (kind === "round") {
+      // ExtrudeGeometry: group0=앞/뒤면, group1=옆면
+      mesh = new THREE.Mesh(geo, [faceMat, sideMat]);
+    } else {
+      mesh = new THREE.Mesh(geo, [sideMat, sideMat, sideMat, sideMat, faceMat, backMat]);
+    }
+    signGroup.add(mesh);
+
+    const edges = new THREE.EdgesGeometry(geo);
+    edgeMesh = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.1, transparent: true }));
+    signGroup.add(edgeMesh);
+
+    // 후광(백라이트) 채널
+    if (haloOpacity > 0) {
+      const glowGeo = new THREE.PlaneGeometry(pw * 1.5, ph * 1.9);
       const glowMat = new THREE.MeshBasicMaterial({
-        map: glowTex, color: glowColor, transparent: true,
-        opacity: neon ? 0.9 : 0.5, blending: THREE.AdditiveBlending, depthWrite: false,
+        map: glowTex, color: haloColor, transparent: true,
+        opacity: haloOpacity, blending: THREE.AdditiveBlending, depthWrite: false,
       });
       glowMesh = new THREE.Mesh(glowGeo, glowMat);
-      glowMesh.position.z = -depth / 2 - 0.05;
-      scene.add(glowMesh);
+      glowMesh.position.z = -d / 2 - 0.06;
+      signGroup.add(glowMesh);
     }
+
+    // 트러스바 지지 구조
+    if (base === "truss") addTruss(pw, ph, d);
+
+    scene.add(signGroup);
+    applyMounting(spec, pw, ph, d);
+  }
+
+  // 라운드(오사이) 발광 박스 — 모서리 둥근 사각을 압출
+  function roundedPanel(w, h, d) {
+    const r = Math.min(w, h) * 0.48;
+    const x = -w / 2, y = -h / 2;
+    const s = new THREE.Shape();
+    s.moveTo(x + r, y);
+    s.lineTo(x + w - r, y);
+    s.quadraticCurveTo(x + w, y, x + w, y + r);
+    s.lineTo(x + w, y + h - r);
+    s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    s.lineTo(x + r, y + h);
+    s.quadraticCurveTo(x, y + h, x, y + h - r);
+    s.lineTo(x, y + r);
+    s.quadraticCurveTo(x, y, x + r, y);
+    const uvGen = {
+      generateTopUV: (g, verts, a, b, c) => {
+        const p = (i) => new THREE.Vector2((verts[i * 3] - x) / w, (verts[i * 3 + 1] - y) / h);
+        return [p(a), p(b), p(c)];
+      },
+      generateSideWallUV: () => [new THREE.Vector2(0, 0), new THREE.Vector2(0, 0), new THREE.Vector2(0, 0), new THREE.Vector2(0, 0)],
+    };
+    const geo = new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: false, steps: 1, UVGenerator: uvGen });
+    geo.translate(0, 0, -d / 2);
+    return geo;
+  }
+
+  // 트러스바 프레임(뒤쪽 지지대)
+  function addTruss(pw, ph, d) {
+    const barMat = new THREE.MeshStandardMaterial({ color: 0x6a7078, metalness: 0.7, roughness: 0.5 });
+    const z = -d / 2 - 0.09;
+    const x = pw / 2 * 0.92, y = ph / 2 * 0.82;
+    const mkBar = (x1, y1, x2, y2) => {
+      const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(len, 0.06, 0.06), barMat);
+      bar.position.set((x1 + x2) / 2, (y1 + y2) / 2, z);
+      bar.rotation.z = Math.atan2(dy, dx);
+      signGroup.add(bar);
+    };
+    mkBar(-x, y, x, y); mkBar(-x, -y, x, -y);
+    const n = 5;
+    for (let i = 0; i < n; i++) {
+      const xa = -x + 2 * x * i / n, xb = -x + 2 * x * (i + 1) / n;
+      mkBar(xa, i % 2 ? y : -y, xb, i % 2 ? -y : y);
+    }
+  }
+
+  // 시공 방식(벽부착/돌출/스탠드)에 따라 사인 배치 + 벽/브래킷/받침 추가
+  function applyMounting(spec, pw, ph, depth) {
+    const install = spec.install || "wall";
+    const metal = () => new THREE.MeshStandardMaterial({ color: 0x2f343b, metalness: 0.75, roughness: 0.4 });
+    const concrete = () => new THREE.MeshStandardMaterial({ color: 0x8b929c, roughness: 0.95, metalness: 0 });
+    const addProp = (m) => { scene.add(m); props.push(m); };
+
+    if (install === "protrude") {
+      // 돌출(블레이드) 간판: 왼쪽 벽에서 오른쪽으로 튀어나옴
+      const wallX = -pw / 2 - 0.15;
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.25, ph + 1.6, 3.6), concrete());
+      wall.position.set(wallX - 0.125, 0, -0.4);
+      addProp(wall);
+      // 사인은 벽 오른쪽으로 튀어나오도록 앞쪽(+z)으로 이동
+      signGroup.position.set(0, 0, 0.5);
+      // 상·하 브래킷 팔(벽 → 사인)
+      [ph / 2 - 0.15, -ph / 2 + 0.15].forEach((y) => {
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.09, 0.9), metal());
+        arm.position.set(wallX + 0.05, y, 0.1);
+        addProp(arm);
+      });
+    } else if (install === "stand") {
+      // 스탠드형: 받침대 위에 세움
+      const lift = 0.9;
+      signGroup.position.set(0, lift, 0);
+      const poleH = lift + 0.1;
+      [-pw / 4, pw / 4].forEach((x) => {
+        const pole = new THREE.Mesh(new THREE.BoxGeometry(0.12, poleH, 0.12), metal());
+        pole.position.set(x, lift - ph / 2 - poleH / 2 + 0.05, 0);
+        addProp(pole);
+      });
+      const base = new THREE.Mesh(new THREE.BoxGeometry(pw * 0.7, 0.08, 0.6), metal());
+      base.position.set(0, lift - ph / 2 - poleH + 0.09, 0);
+      addProp(base);
+    } else {
+      // 벽부착 / 기타: 소품 없이 중앙 배치(깔끔)
+      signGroup.position.set(0, 0, 0);
+    }
+  }
+
+  function clearScene() {
+    glowMesh = null; // signGroup 소속 — 아래 traverse에서 정리됨
+    if (signGroup) {
+      scene.remove(signGroup);
+      signGroup.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) { Array.isArray(o.material) ? o.material.forEach((m) => m && m.dispose && m.dispose()) : o.material.dispose(); }
+      });
+      signGroup = null;
+    }
+    props.forEach((p) => {
+      scene.remove(p);
+      if (p.geometry) p.geometry.dispose();
+      if (p.material) p.material.dispose();
+    });
+    props = [];
+    mesh = null; edgeMesh = null;
   }
 
   function disposeMesh(m) {

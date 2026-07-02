@@ -104,6 +104,16 @@ textarea { resize: vertical; }
 .product-tabs button:hover { border-color: var(--accent); }
 .product-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+.combo-box { margin-bottom: 14px; padding: 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; }
+.combo-title { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.combo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.combo-grid button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  border-radius: 7px; padding: 8px 6px; cursor: pointer; font-size: 11.5px; line-height: 1.2;
+}
+.combo-grid button:hover { border-color: var(--accent); }
+.combo-grid button.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+
 .spec-list { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
 .spec-list .sl { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
 .spec-list .sl span { color: var(--muted); }

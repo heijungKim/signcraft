@@ -16,6 +16,31 @@
     $("productDesc").textContent = prod.desc || "";
     const wrap = $("productOptions");
     wrap.innerHTML = "";
+
+    // 빠른 조합 프리셋(간판 등) — 클릭 시 여러 옵션을 한 번에 세팅
+    if (prod.combos) {
+      const box = document.createElement("div");
+      box.className = "combo-box";
+      const title = document.createElement("div");
+      title.className = "combo-title"; title.textContent = "간판 종류 (빠른 선택 · 조합 자동설정)";
+      box.appendChild(title);
+      const grid = document.createElement("div");
+      grid.className = "combo-grid";
+      prod.combos.forEach((c) => {
+        const b = document.createElement("button");
+        b.textContent = c.label;
+        b.className = comboMatches(c.set) ? "active" : "";
+        b.addEventListener("click", () => {
+          Object.entries(c.set).forEach(([k, v]) => (state.values[k] = v));
+          renderOptions();
+          updateAll();
+        });
+        grid.appendChild(b);
+      });
+      box.appendChild(grid);
+      wrap.appendChild(box);
+    }
+
     prod.fields.forEach((f) => {
       const lab = document.createElement("label");
       lab.textContent = f.label;
@@ -52,10 +77,15 @@
     });
   }
 
+  function comboMatches(set) {
+    return Object.entries(set).every(([k, v]) => state.values[k] === v);
+  }
+
   function onFieldChange(id) {
     if (id === "boardColor") Editor.setBg(state.values.boardColor);
     if (id === "printSide") updateSideSwitch();
     updateAll();
+    if (id === "base" || id === "letter") renderOptions(); // 조합 프리셋 하이라이트 갱신
   }
 
   // ---- 크기 ----
@@ -104,7 +134,7 @@
       widthMM: spec.widthMM, heightMM: spec.heightMM,
       material: r.material, boardColor: spec.values.boardColor, thickness: r.depthMM,
       backDesign: doublePrint,
-      lighting: spec.productType === "sign" ? spec.values.lighting : "none",
+      base: r.base || "flat", letter: r.letter || "none", install: r.install || "none",
     });
     Preview3D.refresh();
     updateQuote(spec);
