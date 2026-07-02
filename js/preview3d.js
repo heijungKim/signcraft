@@ -2,7 +2,11 @@
 window.Preview3D = (function () {
   let renderer, scene, camera, controls, mesh, texture, textureBack, edgeMesh, glowMesh, glowTex, concreteTex, woodTex;
   let keyLight, rimLight, backLight, ambientLight, hemiLight; // 스튜디오 조명(색상 조절용)
-  let composer, bloomPass; // 채널 글자 자체 발광(halo/front) → 블룸으로 실제 후광처럼 번지게
+  // 선택적 블룸(selective bloom): "빛나야 할 오브젝트"만 BLOOM_LAYER에 넣어 블룸 텍스처를 뽑고,
+  // 일반 렌더 위에 더해 합성 — 글자 얼굴처럼 빛나면 안 되는 오브젝트는 밝기와 무관하게 절대 번지지 않음.
+  const BLOOM_LAYER = 1;
+  let bloomLayer, bloomPass, bloomComposer, finalComposer, darkMaterial;
+  const bloomMatCache = {};
   let signGroup = null, props = [];
   let wrap, inited = false;
   let sourceCanvasEl = null, sourceCanvasBackEl = null;
@@ -47,13 +51,42 @@ window.Preview3D = (function () {
     renderer.setSize(w, h);
     wrap.appendChild(renderer.domElement);
 
-    // 채널 글자 발광(halo/front) → 블룸 후처리로 글자 실루엣에서 빛이 실제로 번지는 느낌
+    // 선택적 블룸: BLOOM_LAYER에 속한 오브젝트만 빛나게(글자 얼굴은 절대 안 빛나고, 후광 실루엣만 빛남)
     try {
-      composer = new THREE.EffectComposer(renderer);
-      composer.addPass(new THREE.RenderPass(scene, camera));
-      bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.4, 0.55);
-      composer.addPass(bloomPass);
-    } catch (e) { composer = null; console.warn("블룸 후처리 초기화 실패:", e); }
+      bloomLayer = new THREE.Layers();
+      bloomLayer.set(BLOOM_LAYER);
+      darkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+      const renderScene = new THREE.RenderPass(scene, camera);
+      bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), 0.9, 0.4, 0.35);
+
+      bloomComposer = new THREE.EffectComposer(renderer);
+      bloomComposer.renderToScreen = false;
+      bloomComposer.addPass(renderScene);
+      bloomComposer.addPass(bloomPass);
+
+      const mixPass = new THREE.ShaderPass(
+        new THREE.ShaderMaterial({
+          uniforms: {
+            baseTexture: { value: null },
+            bloomTexture: { value: bloomComposer.renderTarget2.texture },
+          },
+          vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+          fragmentShader: `
+            uniform sampler2D baseTexture;
+            uniform sampler2D bloomTexture;
+            varying vec2 vUv;
+            void main() { gl_FragColor = texture2D(baseTexture, vUv) + vec4(1.0) * texture2D(bloomTexture, vUv); }
+          `,
+        }),
+        "baseTexture"
+      );
+      mixPass.needsSwap = true;
+
+      finalComposer = new THREE.EffectComposer(renderer);
+      finalComposer.addPass(renderScene);
+      finalComposer.addPass(mixPass);
+    } catch (e) { bloomComposer = finalComposer = null; console.warn("블룸 후처리 초기화 실패:", e); }
 
     // 조명 — 기본은 중립 화이트(색 왜곡 최소화), setLightColor()로 스튜디오 조명 색 변경 가능
     ambientLight = new THREE.AmbientLight(0xffffff, 0.75); scene.add(ambientLight);
@@ -277,6 +310,7 @@ window.Preview3D = (function () {
       });
       glowMesh = new THREE.Mesh(glowGeo, glowMat);
       glowMesh.position.z = -d / 2 - 0.06;
+      glowMesh.layers.enable(BLOOM_LAYER);
       signGroup.add(glowMesh);
     }
 
@@ -353,11 +387,11 @@ window.Preview3D = (function () {
       const targetEm = Math.max(0.04, L.emFrac * ph); // 폰트 크기(em) = 에디터와 동일
       const col = new THREE.Color(L.fill || "#222222");
       const lum = 0.299 * col.r + 0.587 * col.g + 0.114 * col.b;
-      // 앞면발광: 글자 얼굴 자체가 은은히 빛남(블룸으로 번짐). 후광채널: 얼굴은 지정한 글자색 그대로(어둡게) 두고
-      // 글자 실루엣과 같은 모양의 살짝 큰 발광판을 얼굴 바로 뒤에 겹쳐, 가장자리에서만 빛이 새어나오게 함.
+      // 앞면발광: 글자 얼굴 자체가 은은히 빛남(블룸으로 번짐). 후광채널: 얼굴은 장면 조명의 영향을 받지 않는
+      // unlit 재질로 지정한 글자색 그대로만 보이게 하고(밝게 뜨지 않음), 실제 후광은 별도 발광 실루엣만 담당.
       const mat = front
         ? new THREE.MeshStandardMaterial({ color: col, emissive: lum < 0.2 ? new THREE.Color(0xffffff) : col, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.0, side: THREE.DoubleSide })
-        : new THREE.MeshStandardMaterial({ color: col, roughness: 0.5, metalness: 0.1, side: THREE.DoubleSide });
+        : new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide });
 
       // 자동 줄바꿈된 각 줄을 위→아래로 배치(에디터 레이아웃과 동일)
       L.lines.forEach((line, i) => {
@@ -370,15 +404,17 @@ window.Preview3D = (function () {
         const m = new THREE.Mesh(geo, mat);
         m.position.set(px, py, d / 2 + depth3d / 2);
         m.rotation.z = angle;
-        signGroup.add(m);
+        if (front) m.layers.enable(BLOOM_LAYER); // 앞면발광: 글자 얼굴 자체가 빛남
+        signGroup.add(m); // 후광채널은 BLOOM_LAYER에 넣지 않음 — 글자 얼굴은 절대 빛나지 않음
 
-        // 후광 채널: 글자와 같은 모양(살짝 확대)의 발광 실루엣을 얼굴 바로 뒤에 배치 — 블룸이 그 윤곽을 따라 번지게 함
+        // 후광 채널: 글자와 같은 모양(살짝 확대)의 발광 실루엣만 얼굴 바로 뒤에 배치 — 이 실루엣만 블룸 대상
         if (halo) {
           const glowGeo = buildTextGeometry(line, targetEm * 1.16, depth3d * 0.25, otFont);
           if (glowGeo) {
-            const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ color: glowColor, toneMapped: false }));
+            const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ color: glowColor }));
             glow.position.set(px, py, d / 2 + 0.015);
             glow.rotation.z = angle;
+            glow.layers.enable(BLOOM_LAYER);
             signGroup.add(glow);
           }
         }
@@ -516,8 +552,22 @@ window.Preview3D = (function () {
     const w = wrap.clientWidth, h = wrap.clientHeight;
     camera.aspect = w / h; camera.updateProjectionMatrix();
     renderer.setSize(w, h);
-    if (composer) composer.setSize(w, h);
+    if (bloomComposer) bloomComposer.setSize(w, h);
+    if (finalComposer) finalComposer.setSize(w, h);
     if (bloomPass) bloomPass.resolution.set(w, h);
+  }
+
+  function darkenNonBloomed(obj) {
+    if (obj.isMesh && bloomLayer.test(obj.layers) === false) {
+      bloomMatCache[obj.uuid] = obj.material;
+      obj.material = darkMaterial;
+    }
+  }
+  function restoreMaterial(obj) {
+    if (bloomMatCache[obj.uuid]) {
+      obj.material = bloomMatCache[obj.uuid];
+      delete bloomMatCache[obj.uuid];
+    }
   }
 
   function animate() {
@@ -525,8 +575,14 @@ window.Preview3D = (function () {
     if (controls) controls.update();
     if (texture) texture.needsUpdate = true;
     if (textureBack) textureBack.needsUpdate = true;
-    if (composer) composer.render();
-    else if (renderer) renderer.render(scene, camera);
+    if (bloomComposer && finalComposer) {
+      scene.traverse(darkenNonBloomed);
+      bloomComposer.render();
+      scene.traverse(restoreMaterial);
+      finalComposer.render();
+    } else if (renderer) {
+      renderer.render(scene, camera);
+    }
   }
 
   function onShow() { onResize(); refresh(); }
