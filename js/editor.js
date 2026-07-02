@@ -151,6 +151,8 @@ window.Editor = (function () {
           hFrac: r.height / Hc,        // 실제 표시(bbox) 높이 비율
           fill: typeof o.fill === "string" ? o.fill : "#222222",
           angle: o.angle || 0,
+          fontFamily: o.fontFamily || "Noto Sans KR",
+          bold: o.fontWeight === "700" || o.fontWeight === "bold",
         };
       });
   }

@@ -6,8 +6,27 @@ window.Preview3D = (function () {
   let sourceCanvasEl = null, sourceCanvasBackEl = null;
   let currentSpec = null;
   let maxAniso = 1, lastTexW = 0, lastTexH = 0;
-  let otFont = null, otLoading = false; // 3D 채널 글자 외곽선용 폰트(한글/영문)
-  const OT_URL = "https://cdn.jsdelivr.net/npm/@expo-google-fonts/black-han-sans/BlackHanSans_400Regular.ttf";
+  // 3D 채널 글자 외곽선 폰트 — 에디터 폰트별 TTF 매칭
+  const OT_BASE = "https://cdn.jsdelivr.net/npm/@expo-google-fonts/";
+  const OT_DEFAULT = OT_BASE + "black-han-sans/BlackHanSans_400Regular.ttf";
+  const OT_MAP = {
+    "Black Han Sans": { 400: "black-han-sans/BlackHanSans_400Regular.ttf" },
+    "Noto Sans KR": { 400: "noto-sans-kr/NotoSansKR_400Regular.ttf", 700: "noto-sans-kr/NotoSansKR_700Bold.ttf" },
+    "Nanum Gothic": { 400: "nanum-gothic/NanumGothic_400Regular.ttf", 700: "nanum-gothic/NanumGothic_700Bold.ttf" },
+    "Jua": { 400: "jua/Jua_400Regular.ttf" },
+    "Gowun Dodum": { 400: "gowun-dodum/GowunDodum_400Regular.ttf" },
+    "Montserrat": { 400: "montserrat/Montserrat_400Regular.ttf", 700: "montserrat/Montserrat_700Bold.ttf" },
+    "Bebas Neue": { 400: "bebas-neue/BebasNeue_400Regular.ttf" },
+  };
+  const otFonts = {}; // url -> opentype font
+  const otState = {}; // url -> 'loading' | 'ok' | 'fail'
+
+  function fontUrlFor(family, bold) {
+    const m = OT_MAP[family];
+    if (!m) return OT_DEFAULT;
+    const w = bold && m[700] ? 700 : 400;
+    return OT_BASE + (m[w] || m[400]);
+  }
 
   function init(canvasEl, canvasBackEl) {
     sourceCanvasEl = canvasEl;
@@ -144,8 +163,8 @@ window.Preview3D = (function () {
 
     // 채널 글자 사용 여부 판단(한글/영문 외곽선 압출)
     const wantChannel = (letter === "front" || letter === "halo") && spec.letters && spec.letters.length;
-    if (wantChannel && !otFont) ensureOtFont();
-    const chLetters = (wantChannel && otFont) ? extrudableLetters(spec.letters) : [];
+    if (wantChannel) ensureFont(OT_DEFAULT); // 대체용 기본 폰트 확보
+    const chLetters = wantChannel ? extrudableLetters(spec.letters) : [];
     const useChannel = chLetters.length > 0;
 
     // 후광(발광) 표시: 후광채널 또는 발광 베이스(면발광/라운드/큐브)
@@ -200,17 +219,17 @@ window.Preview3D = (function () {
     applyMounting(spec, pw, ph, d);
   }
 
-  // 채널 글자 외곽선 폰트(TTF) 지연 로드
-  function ensureOtFont() {
-    if (otFont || otLoading || !window.opentype) return;
-    otLoading = true;
-    window.opentype.load(OT_URL, (err, f) => {
-      otLoading = false;
-      if (err || !f) { console.warn("3D 글자 폰트 로드 실패:", err); return; }
-      otFont = f;
+  // 채널 글자 외곽선 폰트(TTF) 지연 로드 — url별 캐시
+  function ensureFont(url) {
+    if (otState[url] || !window.opentype) return;
+    otState[url] = "loading";
+    window.opentype.load(url, (err, f) => {
+      if (err || !f) { otState[url] = "fail"; console.warn("3D 글자 폰트 로드 실패:", url, err); return; }
+      otFonts[url] = f; otState[url] = "ok";
       if (currentSpec) build(currentSpec);
     });
   }
+  function usableFont(url) { return otFonts[url] || otFonts[OT_DEFAULT] || null; }
 
   // 텍스트가 있는 개체만 추림(한글/영문 모두 외곽선 압출 가능)
   function extrudableLetters(letters) {
@@ -220,7 +239,7 @@ window.Preview3D = (function () {
   }
 
   // 글자 외곽선 → THREE.Shape → 압출 지오메트리
-  function buildTextGeometry(txt, targetH, depth3d) {
+  function buildTextGeometry(txt, targetH, depth3d, otFont) {
     let shapes = [];
     try {
       const d = otFont.getPath(txt, 0, 0, 100).toPathData(2); // 100px 기준 외곽선
@@ -237,7 +256,7 @@ window.Preview3D = (function () {
     const Hpx = Math.max(1, bb.max.y - bb.min.y);
     const scale = targetH / Hpx;
     const depthPx = depth3d / scale;
-    const bevelPx = Math.min(depthPx * 0.12, Hpx * 0.02);
+    const bevelPx = Math.min(depthPx * 0.07, Hpx * 0.012);
 
     let geo;
     const opts = { depth: depthPx, bevelEnabled: true, bevelThickness: bevelPx, bevelSize: bevelPx, bevelSegments: 1, curveSegments: 6 };
@@ -257,8 +276,14 @@ window.Preview3D = (function () {
     const depth3d = Math.min(0.26, d * 1.4 + 0.14);
 
     chLetters.forEach((L) => {
+      // 에디터 폰트에 맞는 TTF 사용(없으면 기본 폰트로 임시 렌더 후 로드되면 교체)
+      const url = fontUrlFor(L.fontFamily, L.bold);
+      if (!otState[url]) ensureFont(url);
+      const otFont = usableFont(url);
+      if (!otFont) return;
+
       const targetH = Math.max(0.05, L.hFrac * ph); // 표시 높이(bbox) 기준
-      const geo = buildTextGeometry(L.txt, targetH, depth3d);
+      const geo = buildTextGeometry(L.txt, targetH, depth3d, otFont);
       if (!geo) return;
 
       const col = new THREE.Color(L.fill || "#222222");
