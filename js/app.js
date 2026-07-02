@@ -83,9 +83,11 @@
   function updateAll() {
     const spec = currentSpec();
     const r = PRODUCTS.render3d(spec);
+    const doublePrint = spec.productType === "banner" && spec.values.printSide === "double";
     Preview3D.build({
       widthMM: spec.widthMM, heightMM: spec.heightMM,
       material: r.material, boardColor: spec.values.boardColor, thickness: r.depthMM,
+      backDesign: doublePrint,
     });
     Preview3D.refresh();
     updateQuote(spec);

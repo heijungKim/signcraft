@@ -1,6 +1,6 @@
 /* ===== 360° 3D 미리보기 (Three.js) ===== */
 window.Preview3D = (function () {
-  let renderer, scene, camera, controls, mesh, texture, edgeMesh;
+  let renderer, scene, camera, controls, mesh, texture, textureBack, edgeMesh;
   let wrap, inited = false;
   let sourceCanvasEl = null;
   let currentSpec = null;
@@ -25,6 +25,7 @@ window.Preview3D = (function () {
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(4, 6, 8); scene.add(key);
     const rim = new THREE.DirectionalLight(0x88aaff, 0.5); rim.position.set(-6, -2, -4); scene.add(rim);
+    const back = new THREE.DirectionalLight(0xffffff, 0.7); back.position.set(0, 3, -8); scene.add(back); // 후면 보조광(양면 인쇄 확인용)
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.7));
 
@@ -55,13 +56,20 @@ window.Preview3D = (function () {
     texture = new THREE.CanvasTexture(sourceCanvasEl);
     texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
+    // 뒷면용 텍스처(좌우 반전) — 양면 인쇄 시 뒤에서 읽히도록
+    textureBack = texture.clone();
+    textureBack.wrapS = THREE.RepeatWrapping;
+    textureBack.repeat.x = -1;
+    textureBack.offset.x = 1;
+    textureBack.anisotropy = texture.anisotropy;
+
     window.addEventListener("resize", onResize);
     inited = true;
     animate();
   }
 
-  function materialParams(spec) {
-    const map = texture;
+  function materialParams(spec, map) {
+    map = map || texture;
     switch (spec.material) {
       case "clear": // 투명 아크릴 — 은은한 하늘빛 틴트 + 광택, 글자는 보이게
         return new THREE.MeshPhysicalMaterial({
@@ -110,12 +118,15 @@ window.Preview3D = (function () {
     const depth = Math.max(0.04, (spec.thickness / 1000) * 6); // 두께 시각화
 
     const geo = new THREE.BoxGeometry(pw, ph, depth);
-    const faceMat = materialParams(spec);
+    const faceMat = materialParams(spec, texture);
     const sideColor = new THREE.Color(spec.material === "stainless" || spec.material === "mirror" ? 0xbfc6cf : (spec.boardColor || "#dddddd"));
     const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.5, metalness: spec.material === "stainless" ? 0.8 : 0.1 });
 
+    // 양면 인쇄면 → 뒷면에도 (좌우 반전) 디자인 복제, 아니면 바탕색
+    const backMat = spec.backDesign ? materialParams(spec, textureBack) : sideMat;
+
     // BoxGeometry material order: +x,-x,+y,-y,+z(front),-z(back)
-    mesh = new THREE.Mesh(geo, [sideMat, sideMat, sideMat, sideMat, faceMat, sideMat]);
+    mesh = new THREE.Mesh(geo, [sideMat, sideMat, sideMat, sideMat, faceMat, backMat]);
     scene.add(mesh);
 
     // 외곽선
@@ -133,7 +144,10 @@ window.Preview3D = (function () {
     else if (mat && mat.dispose) mat.dispose();
   }
 
-  function refresh() { if (texture) texture.needsUpdate = true; }
+  function refresh() {
+    if (texture) texture.needsUpdate = true;
+    if (textureBack) textureBack.needsUpdate = true;
+  }
 
   function onResize() {
     if (!inited || !wrap.clientWidth) return;
@@ -146,6 +160,7 @@ window.Preview3D = (function () {
     requestAnimationFrame(animate);
     if (controls) controls.update();
     if (texture) texture.needsUpdate = true;
+    if (textureBack) textureBack.needsUpdate = true;
     if (renderer) renderer.render(scene, camera);
   }
 
