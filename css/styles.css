@@ -163,6 +163,13 @@ textarea { resize: vertical; }
 #threeWrap { width: 100%; height: 100%; }
 .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
 
+.view3d-controls { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+.view3d-controls .ss-label { font-size: 12px; color: var(--muted); margin-right: 4px; }
+.view3d-controls input[type="color"] {
+  width: 34px; height: 28px; padding: 0; border: 1px solid var(--line);
+  border-radius: 6px; background: none; cursor: pointer;
+}
+
 /* ===== Quote ===== */
 .quote-line { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
 .quote-line span { color: var(--muted); }

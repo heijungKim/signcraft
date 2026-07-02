@@ -136,6 +136,7 @@
       material: r.material, boardColor: spec.values.boardColor, thickness: r.depthMM,
       backDesign: doublePrint,
       base: r.base || "flat", letter: r.letter || "none", install: r.install || "none",
+      lightColor: r.lightColor,
       letters: channel ? Editor.getTextObjects("front") : null,
     });
     Preview3D.refresh();
@@ -229,6 +230,9 @@
 
   // ---- 수량 ----
   $("qty").addEventListener("input", () => { state.qty = +$("qty").value || 1; updateQuote(currentSpec()); });
+
+  // ---- 3D 스튜디오 조명 색상 ----
+  $("studioLightColor").addEventListener("input", () => Preview3D.setLightColor($("studioLightColor").value));
 
   // ---- 탭 전환 (에디터 / 3D) ----
   document.querySelectorAll(".tab").forEach((tab) =>

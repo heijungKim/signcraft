@@ -93,6 +93,7 @@ window.PRODUCTS = (function () {
           { v: "front", t: "앞면발광 채널 +45%", mult: 1.45 },
           { v: "halo", t: "후광(백라이트) 채널 +60%", mult: 1.6 },
         ]},
+        { id: "lightColor", label: "조명(후광) 색상", type: "color", def: "#fff2d6" },
         { id: "material", label: "표면 재질", type: "select", def: "milky", options: [
           { v: "milky", t: "아크릴(유백)", mult: 1 },
           { v: "color", t: "아크릴(컬러)", mult: 1.1 },
@@ -141,6 +142,7 @@ window.PRODUCTS = (function () {
         base: v.base || "flex",
         letter: v.letter || "none",
         install: v.install || "wall",
+        lightColor: v.lightColor || "#fff2d6",
       };
     }
     return { material: v.material || "milky", depthMM: depth };
