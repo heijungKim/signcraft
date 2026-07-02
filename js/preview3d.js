@@ -2,11 +2,13 @@
 window.Preview3D = (function () {
   let renderer, scene, camera, controls, mesh, texture, textureBack, edgeMesh;
   let wrap, inited = false;
-  let sourceCanvasEl = null;
+  let sourceCanvasEl = null, sourceCanvasBackEl = null;
   let currentSpec = null;
+  let maxAniso = 1, lastTexW = 0, lastTexH = 0;
 
-  function init(canvasEl) {
+  function init(canvasEl, canvasBackEl) {
     sourceCanvasEl = canvasEl;
+    sourceCanvasBackEl = canvasBackEl || canvasEl;
     wrap = document.getElementById("threeWrap");
 
     scene = new THREE.Scene();
@@ -53,15 +55,8 @@ window.Preview3D = (function () {
     controls.minDistance = 2;
     controls.maxDistance = 12;
 
-    texture = new THREE.CanvasTexture(sourceCanvasEl);
-    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-
-    // 뒷면용 텍스처(좌우 반전) — 양면 인쇄 시 뒤에서 읽히도록
-    textureBack = texture.clone();
-    textureBack.wrapS = THREE.RepeatWrapping;
-    textureBack.repeat.x = -1;
-    textureBack.offset.x = 1;
-    textureBack.anisotropy = texture.anisotropy;
+    maxAniso = renderer.capabilities.getMaxAnisotropy();
+    ensureTextures(true);
 
     window.addEventListener("resize", onResize);
     inited = true;
@@ -105,9 +100,24 @@ window.Preview3D = (function () {
     }
   }
 
+  // 캔버스 픽셀 크기가 바뀌면 텍스처를 새로 생성(GPU 버퍼 잔상 방지)
+  function ensureTextures(force) {
+    const w = sourceCanvasEl.width, h = sourceCanvasEl.height;
+    if (!force && texture && lastTexW === w && lastTexH === h) return;
+    if (texture) texture.dispose();
+    if (textureBack) textureBack.dispose();
+    texture = new THREE.CanvasTexture(sourceCanvasEl);
+    texture.anisotropy = maxAniso;
+    // 뒷면 캔버스 텍스처 — 뒷면 디자인은 뒤에서 정상으로 읽혀야 하므로 반전하지 않음
+    textureBack = new THREE.CanvasTexture(sourceCanvasBackEl);
+    textureBack.anisotropy = maxAniso;
+    lastTexW = w; lastTexH = h;
+  }
+
   function build(spec) {
     currentSpec = spec;
     if (!inited) return;
+    ensureTextures(false);
     disposeMesh(mesh); mesh = null;
     disposeMesh(edgeMesh); edgeMesh = null;
 

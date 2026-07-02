@@ -109,8 +109,15 @@
 
       <div class="stage-body">
         <div id="editView" class="view active">
+          <div class="side-switch" id="sideSwitch" style="display:none;">
+            <span class="ss-label">편집 면</span>
+            <button data-side="front" class="active">앞면</button>
+            <button data-side="back">뒷면</button>
+            <button id="copyToBack" class="ss-copy">앞면 → 뒷면 복사</button>
+          </div>
           <div class="canvas-wrap">
             <canvas id="designCanvas" width="800" height="400"></canvas>
+            <canvas id="designCanvasBack" width="800" height="400"></canvas>
           </div>
           <p class="hint">개체를 드래그해 위치·크기·회전 조절 · 실제 비율로 표시됩니다</p>
         </div>

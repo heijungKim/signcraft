@@ -54,6 +54,7 @@
 
   function onFieldChange(id) {
     if (id === "boardColor") Editor.setBg(state.values.boardColor);
+    if (id === "printSide") updateSideSwitch();
     updateAll();
   }
 
@@ -61,7 +62,7 @@
   function setSize(w, h) {
     state.widthMM = w; state.heightMM = h;
     $("widthMM").value = w; $("heightMM").value = h;
-    Editor.setSize(w, h, state.values.boardColor);
+    Editor.setSize(w, h);
     updateAll();
   }
 
@@ -75,8 +76,23 @@
     document.querySelectorAll("#productTabs button").forEach((b) => b.classList.toggle("active", b.dataset.p === pt));
     renderOptions();
     renderPresets();
-    Editor.setSize(sz.w, sz.h, state.values.boardColor);
+    Editor.setBgBoth(state.values.boardColor);
+    Editor.setSize(sz.w, sz.h);
+    updateSideSwitch();
     updateAll();
+  }
+
+  // ---- 양면(앞/뒤) 편집 전환 UI ----
+  function isDouble() {
+    return state.productType === "banner" && state.values.printSide === "double";
+  }
+  function updateSideSwitch() {
+    const show = isDouble();
+    $("sideSwitch").style.display = show ? "" : "none";
+    if (!show) {
+      Editor.setActiveSide("front");
+      document.querySelectorAll("#sideSwitch button[data-side]").forEach((b) => b.classList.toggle("active", b.dataset.side === "front"));
+    }
   }
 
   // ---- 3D + 견적 갱신 ----
@@ -108,13 +124,15 @@
   // ---- 초기화 ----
   Editor.init(() => Preview3D.refresh());
   state.values = PRODUCTS.defaults("acrylic");
-  Editor.setSize(state.widthMM, state.heightMM, state.values.boardColor);
+  Editor.setBgBoth(state.values.boardColor);
+  Editor.setSize(state.widthMM, state.heightMM);
   Editor.addText("OPEN", { fontFamily: "Black Han Sans", fontSize: 90, fill: "#111111" });
   renderOptions();
   renderPresets();
 
-  try { Preview3D.init(Editor.getElement()); }
+  try { Preview3D.init(Editor.getElement("front"), Editor.getElement("back")); }
   catch (e) { console.error("3D 미리보기 초기화 실패:", e); }
+  updateSideSwitch();
   updateAll();
 
   // ---- 제품 탭 ----
@@ -123,8 +141,18 @@
   );
 
   // ---- 크기 입력 ----
-  $("widthMM").addEventListener("input", () => { state.widthMM = +$("widthMM").value || 100; Editor.setSize(state.widthMM, state.heightMM, state.values.boardColor); updateAll(); });
-  $("heightMM").addEventListener("input", () => { state.heightMM = +$("heightMM").value || 100; Editor.setSize(state.widthMM, state.heightMM, state.values.boardColor); updateAll(); });
+  $("widthMM").addEventListener("input", () => { state.widthMM = +$("widthMM").value || 100; Editor.setSize(state.widthMM, state.heightMM); updateAll(); });
+  $("heightMM").addEventListener("input", () => { state.heightMM = +$("heightMM").value || 100; Editor.setSize(state.widthMM, state.heightMM); updateAll(); });
+
+  // ---- 앞/뒤 면 전환 ----
+  document.querySelectorAll("#sideSwitch button[data-side]").forEach((b) =>
+    b.addEventListener("click", () => {
+      document.querySelectorAll("#sideSwitch button[data-side]").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      Editor.setActiveSide(b.dataset.side);
+    })
+  );
+  $("copyToBack").addEventListener("click", () => { Editor.copyFrontToBack(); Preview3D.refresh(); });
 
   // ---- 텍스트 ----
   $("addText").addEventListener("click", () => {

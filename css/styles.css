@@ -139,6 +139,17 @@ textarea { resize: vertical; }
   box-shadow: 0 10px 40px rgba(0,0,0,.4);
   max-width: 100%; max-height: 100%; overflow: auto;
 }
+.side-switch { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+.side-switch .ss-label { font-size: 12px; color: var(--muted); margin-right: 4px; }
+.side-switch button {
+  background: var(--panel-2); color: var(--muted);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 16px;
+  cursor: pointer; font-size: 13px; font-weight: 700;
+}
+.side-switch button:hover { border-color: var(--accent); }
+.side-switch button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.side-switch .ss-copy { margin-left: auto; font-weight: 400; color: var(--text); }
+
 #threeWrap { width: 100%; height: 100%; }
 .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
 
