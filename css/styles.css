@@ -95,6 +95,19 @@ textarea { resize: vertical; }
 .btn.danger { border-color: var(--danger); color: var(--danger); }
 .btn.danger:hover { background: var(--danger); color: #fff; }
 
+.product-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.product-tabs button {
+  flex: 1; background: var(--panel-2); color: var(--muted);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 6px;
+  cursor: pointer; font-size: 13px; font-weight: 700;
+}
+.product-tabs button:hover { border-color: var(--accent); }
+.product-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.spec-list { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.spec-list .sl { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
+.spec-list .sl span { color: var(--muted); }
+
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .presets button {
   flex: 1 1 45%; background: var(--panel-2); color: var(--text);

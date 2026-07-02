@@ -38,34 +38,18 @@
     <!-- ===== 좌측: 컨트롤 패널 ===== -->
     <aside class="panel panel-left">
       <section class="group">
-        <h3>제품 · 재질</h3>
-        <label>제품 종류
-          <select id="productType">
-            <option value="acrylic">아크릴 간판</option>
-            <option value="banner">현수막(배너)</option>
-            <option value="channel">채널(입체) 간판</option>
-            <option value="metal">금속 간판</option>
-          </select>
-        </label>
-        <label>재질
-          <select id="material">
-            <option value="clear">투명 아크릴</option>
-            <option value="milky">유백 아크릴</option>
-            <option value="color">컬러 아크릴</option>
-            <option value="mirror">미러(거울) 아크릴</option>
-            <option value="stainless">스테인리스</option>
-            <option value="wood">우드(목재)</option>
-          </select>
-        </label>
-        <label>바탕 색상 <input type="color" id="boardColor" value="#f4f4f4" /></label>
-        <label>두께
-          <select id="thickness">
-            <option value="3">3mm</option>
-            <option value="5" selected>5mm</option>
-            <option value="8">8mm</option>
-            <option value="10">10mm</option>
-          </select>
-        </label>
+        <h3>제품 종류</h3>
+        <div class="product-tabs" id="productTabs">
+          <button data-p="acrylic" class="active">아크릴</button>
+          <button data-p="banner">현수막</button>
+          <button data-p="sign">간판</button>
+        </div>
+        <p class="small muted" id="productDesc"></p>
+      </section>
+
+      <section class="group">
+        <h3 id="optTitle">옵션</h3>
+        <div id="productOptions"></div>
       </section>
 
       <section class="group">
@@ -74,12 +58,7 @@
           <label>가로 <input type="number" id="widthMM" value="600" min="50" step="10" /></label>
           <label>세로 <input type="number" id="heightMM" value="300" min="50" step="10" /></label>
         </div>
-        <div class="presets">
-          <button data-w="600" data-h="300">600×300</button>
-          <button data-w="900" data-h="600">900×600</button>
-          <button data-w="1200" data-h="600">1200×600</button>
-          <button data-w="1800" data-h="900">1800×900</button>
-        </div>
+        <div class="presets" id="sizePresets"></div>
       </section>
 
       <section class="group">
@@ -147,17 +126,16 @@
     <aside class="panel panel-right">
       <section class="group">
         <h3>실시간 견적</h3>
+        <div class="quote-line"><span>제품</span><b id="qProduct">—</b></div>
         <div class="quote-line"><span>면적</span><b id="qArea">—</b></div>
-        <div class="quote-line"><span>재질/두께</span><b id="qMaterial">—</b></div>
         <div class="quote-line"><span>제작비</span><b id="qBase">—</b></div>
-        <div class="quote-line"><span>옵션(가공)</span><b id="qOption">—</b></div>
+        <div class="quote-line"><span>옵션(가공/시공)</span><b id="qOption">—</b></div>
         <hr />
         <div class="quote-total"><span>예상 견적(VAT 별도)</span><b id="qTotal">₩0</b></div>
-        <label class="chk small"><input type="checkbox" id="optCut" /> 재단/절곡 가공 (+15%)</label>
-        <label class="chk small"><input type="checkbox" id="optLed" /> LED 조명 추가 (+₩45,000)</label>
         <label>수량
           <input type="number" id="qty" value="1" min="1" />
         </label>
+        <div class="spec-list" id="quoteSpec"></div>
       </section>
 
       <section class="group">
@@ -191,6 +169,7 @@
     </div>
   </div>
 
+  <script src="js/products.js"></script>
   <script src="js/quote.js"></script>
   <script src="js/editor.js"></script>
   <script src="js/preview3d.js"></script>

@@ -90,6 +90,8 @@ window.Preview3D = (function () {
         });
       case "wood": // 우드 — 무광 나무
         return new THREE.MeshStandardMaterial({ map, color: 0xb98a55, metalness: 0.0, roughness: 0.85 });
+      case "fabric": // 현수막 원단 — 무광 천
+        return new THREE.MeshStandardMaterial({ map, color: 0xffffff, metalness: 0.0, roughness: 0.95, side: THREE.DoubleSide });
       default:
         return new THREE.MeshStandardMaterial({ map, roughness: 0.4 });
     }
