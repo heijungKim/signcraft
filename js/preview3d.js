@@ -2,6 +2,7 @@
 window.Preview3D = (function () {
   let renderer, scene, camera, controls, mesh, texture, textureBack, edgeMesh, glowMesh, glowTex, concreteTex, woodTex;
   let keyLight, rimLight, backLight, ambientLight, hemiLight; // 스튜디오 조명(색상 조절용)
+  let composer, bloomPass; // 채널 글자 자체 발광(halo/front) → 블룸으로 실제 후광처럼 번지게
   let signGroup = null, props = [];
   let wrap, inited = false;
   let sourceCanvasEl = null, sourceCanvasBackEl = null;
@@ -45,6 +46,14 @@ window.Preview3D = (function () {
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(w, h);
     wrap.appendChild(renderer.domElement);
+
+    // 채널 글자 발광(halo/front) → 블룸 후처리로 글자 실루엣에서 빛이 실제로 번지는 느낌
+    try {
+      composer = new THREE.EffectComposer(renderer);
+      composer.addPass(new THREE.RenderPass(scene, camera));
+      bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.4, 0.55);
+      composer.addPass(bloomPass);
+    } catch (e) { composer = null; console.warn("블룸 후처리 초기화 실패:", e); }
 
     // 조명 — 기본은 중립 화이트(색 왜곡 최소화), setLightColor()로 스튜디오 조명 색 변경 가능
     ambientLight = new THREE.AmbientLight(0xffffff, 0.75); scene.add(ambientLight);
@@ -344,9 +353,11 @@ window.Preview3D = (function () {
       const targetEm = Math.max(0.04, L.emFrac * ph); // 폰트 크기(em) = 에디터와 동일
       const col = new THREE.Color(L.fill || "#222222");
       const lum = 0.299 * col.r + 0.587 * col.g + 0.114 * col.b;
+      // 앞면발광: 글자 얼굴 자체가 은은히 빛남(블룸으로 번짐). 후광채널: 얼굴은 지정한 글자색 그대로(어둡게) 두고
+      // 글자 실루엣과 같은 모양의 살짝 큰 발광판을 얼굴 바로 뒤에 겹쳐, 가장자리에서만 빛이 새어나오게 함.
       const mat = front
-        ? new THREE.MeshStandardMaterial({ color: col, emissive: lum < 0.2 ? new THREE.Color(0xffffff) : col, emissiveIntensity: 0.7, roughness: 0.35, metalness: 0.0, side: THREE.DoubleSide })
-        : new THREE.MeshStandardMaterial({ color: col, roughness: 0.5, metalness: 0.25, side: THREE.DoubleSide }); // 후광 채널도 지정한 글자색을 반영
+        ? new THREE.MeshStandardMaterial({ color: col, emissive: lum < 0.2 ? new THREE.Color(0xffffff) : col, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.0, side: THREE.DoubleSide })
+        : new THREE.MeshStandardMaterial({ color: col, roughness: 0.5, metalness: 0.1, side: THREE.DoubleSide });
 
       // 자동 줄바꿈된 각 줄을 위→아래로 배치(에디터 레이아웃과 동일)
       L.lines.forEach((line, i) => {
@@ -361,25 +372,14 @@ window.Preview3D = (function () {
         m.rotation.z = angle;
         signGroup.add(m);
 
-        // 후광 채널: 단어 전체가 아니라 낱글자 하나하나 뒤에서 개별적으로 빛이 새어나오도록 글자 단위로 배치
+        // 후광 채널: 글자와 같은 모양(살짝 확대)의 발광 실루엣을 얼굴 바로 뒤에 배치 — 블룸이 그 윤곽을 따라 번지게 함
         if (halo) {
-          const totalAdv = otFont.getAdvanceWidth(line, targetEm);
-          const cosA = Math.cos(angle), sinA = Math.sin(angle);
-          const gh = targetEm * 1.35;
-          let adv = 0;
-          for (const ch of line) {
-            const w = otFont.getAdvanceWidth(ch, targetEm);
-            if (ch.trim()) {
-              const cx = adv + w / 2 - totalAdv / 2; // 줄 중앙 기준 낱글자 위치(센터링과 동일 기준)
-              const glow = new THREE.Mesh(
-                new THREE.PlaneGeometry(w + targetEm * 0.32, gh),
-                new THREE.MeshBasicMaterial({ map: glowTex, color: glowColor, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })
-              );
-              glow.position.set(px + cx * cosA, py + cx * sinA, d / 2 + 0.01); // 패널 표면 바로 앞 — 글자가 그 위를 덮어 가장자리만 번짐
-              glow.rotation.z = angle;
-              signGroup.add(glow);
-            }
-            adv += w;
+          const glowGeo = buildTextGeometry(line, targetEm * 1.16, depth3d * 0.25, otFont);
+          if (glowGeo) {
+            const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ color: glowColor, toneMapped: false }));
+            glow.position.set(px, py, d / 2 + 0.015);
+            glow.rotation.z = angle;
+            signGroup.add(glow);
           }
         }
       });
@@ -516,6 +516,8 @@ window.Preview3D = (function () {
     const w = wrap.clientWidth, h = wrap.clientHeight;
     camera.aspect = w / h; camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+    if (composer) composer.setSize(w, h);
+    if (bloomPass) bloomPass.resolution.set(w, h);
   }
 
   function animate() {
@@ -523,7 +525,8 @@ window.Preview3D = (function () {
     if (controls) controls.update();
     if (texture) texture.needsUpdate = true;
     if (textureBack) textureBack.needsUpdate = true;
-    if (renderer) renderer.render(scene, camera);
+    if (composer) composer.render();
+    else if (renderer) renderer.render(scene, camera);
   }
 
   function onShow() { onResize(); refresh(); }
