@@ -58,7 +58,7 @@ window.Preview3D = (function () {
       darkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
 
       const renderScene = new THREE.RenderPass(scene, camera);
-      bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), 0.9, 0.4, 0.35);
+      bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), 1.3, 0.9, 0.2); // radius를 크게 — 실사 후광처럼 부드럽고 넓게 번지도록
 
       bloomComposer = new THREE.EffectComposer(renderer);
       bloomComposer.renderToScreen = false;
@@ -397,11 +397,12 @@ window.Preview3D = (function () {
           correctedEm = targetEm * Math.min(2.5, Math.max(0.3, desiredW / widest));
         }
       }
-      // 앞면발광: 글자 얼굴 자체가 은은히 빛남(블룸으로 번짐). 후광채널: 얼굴은 장면 조명의 영향을 받지 않는
-      // unlit 재질로 지정한 글자색 그대로만 보이게 하고(밝게 뜨지 않음), 실제 후광은 별도 발광 실루엣만 담당.
+      // 앞면발광: 글자 얼굴 자체가 은은히 빛남(블룸으로 번짐). 후광채널: 실제 후광 간판처럼 얼굴엔 직접광이
+      // 닿지 않으므로 색과 무관하게 항상 어둡고 무광(unlit)으로 — 후광은 별도 발광 실루엣만 담당.
+      const matteCol = col.clone().multiplyScalar(0.14);
       const mat = front
         ? new THREE.MeshStandardMaterial({ color: col, emissive: lum < 0.2 ? new THREE.Color(0xffffff) : col, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.0, side: THREE.DoubleSide })
-        : new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide });
+        : new THREE.MeshBasicMaterial({ color: matteCol, side: THREE.DoubleSide });
 
       // 자동 줄바꿈된 각 줄을 위→아래로 배치(에디터 레이아웃과 동일)
       L.lines.forEach((line, i) => {
