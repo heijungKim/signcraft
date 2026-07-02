@@ -231,32 +231,27 @@ window.Preview3D = (function () {
   }
   function usableFont(url) { return otFonts[url] || otFonts[OT_DEFAULT] || null; }
 
-  // 텍스트가 있는 개체만 추림(한글/영문 모두 외곽선 압출 가능)
+  // 텍스트가 있는 개체만 추림(줄바꿈 유지)
   function extrudableLetters(letters) {
     return letters
-      .map((L) => ({ ...L, txt: (L.text || "").replace(/\s+$/g, "") }))
-      .filter((L) => L.txt.trim().length);
+      .map((L) => ({ ...L, lines: (L.lines || []).map((s) => s.replace(/\s+$/g, "")) }))
+      .filter((L) => L.lines.some((s) => s.trim().length));
   }
 
-  // 글자 외곽선 → THREE.Shape → 압출 지오메트리
-  function buildTextGeometry(txt, targetH, depth3d, otFont) {
+  // 글자 외곽선 → THREE.Shape → 압출 지오메트리 (targetEm = 3D 폰트 크기 단위)
+  function buildTextGeometry(txt, targetEm, depth3d, otFont) {
     let shapes = [];
     try {
-      const d = otFont.getPath(txt, 0, 0, 100).toPathData(2); // 100px 기준 외곽선
+      const d = otFont.getPath(txt, 0, 0, 100).toPathData(2); // 100px em 기준 외곽선
       if (!d) return null;
       const parsed = new THREE.SVGLoader().parse(`<svg xmlns="http://www.w3.org/2000/svg"><path d="${d}"/></svg>`);
       parsed.paths.forEach((p) => THREE.SVGLoader.createShapes(p).forEach((s) => shapes.push(s)));
     } catch (e) { return null; }
     if (!shapes.length) return null;
 
-    // px 크기 측정 → 3D 스케일 산출
-    const flat = new THREE.ShapeGeometry(shapes);
-    flat.computeBoundingBox();
-    const bb = flat.boundingBox; flat.dispose();
-    const Hpx = Math.max(1, bb.max.y - bb.min.y);
-    const scale = targetH / Hpx;
+    const scale = targetEm / 100;        // 100px em → 목표 em(에디터와 동일 크기)
     const depthPx = depth3d / scale;
-    const bevelPx = Math.min(depthPx * 0.07, Hpx * 0.012);
+    const bevelPx = Math.min(depthPx * 0.07, 1.2);
 
     let geo;
     const opts = { depth: depthPx, bevelEnabled: true, bevelThickness: bevelPx, bevelSize: bevelPx, bevelSegments: 1, curveSegments: 6 };
@@ -282,24 +277,24 @@ window.Preview3D = (function () {
       const otFont = usableFont(url);
       if (!otFont) return;
 
-      const targetH = Math.max(0.05, L.hFrac * ph); // 표시 높이(bbox) 기준
-      const geo = buildTextGeometry(L.txt, targetH, depth3d, otFont);
-      if (!geo) return;
-
+      const targetEm = Math.max(0.04, L.emFrac * ph); // 폰트 크기(em) = 에디터와 동일
       const col = new THREE.Color(L.fill || "#222222");
       const lum = 0.299 * col.r + 0.587 * col.g + 0.114 * col.b;
-      let mat;
-      if (front) {
-        const emis = lum < 0.2 ? new THREE.Color(0xffffff) : col; // 앞면발광(어두우면 흰빛)
-        mat = new THREE.MeshStandardMaterial({ color: col, emissive: emis, emissiveIntensity: 0.7, roughness: 0.35, metalness: 0.0, side: THREE.DoubleSide });
-      } else {
-        mat = new THREE.MeshStandardMaterial({ color: 0x232323, roughness: 0.5, metalness: 0.25, side: THREE.DoubleSide }); // 후광 실루엣
-      }
+      const mat = front
+        ? new THREE.MeshStandardMaterial({ color: col, emissive: lum < 0.2 ? new THREE.Color(0xffffff) : col, emissiveIntensity: 0.7, roughness: 0.35, metalness: 0.0, side: THREE.DoubleSide })
+        : new THREE.MeshStandardMaterial({ color: 0x232323, roughness: 0.5, metalness: 0.25, side: THREE.DoubleSide });
 
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set((L.cxFrac - 0.5) * pw, (0.5 - L.cyFrac) * ph, d / 2 + depth3d / 2);
-      m.rotation.z = -L.angle * Math.PI / 180;
-      signGroup.add(m);
+      // 자동 줄바꿈된 각 줄을 위→아래로 배치(에디터 레이아웃과 동일)
+      L.lines.forEach((line, i) => {
+        if (!line.trim()) return;
+        const geo = buildTextGeometry(line, targetEm, depth3d, otFont);
+        if (!geo) return;
+        const cyFrac = L.topFrac + (i + 0.5) * L.lineHFrac;
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set((L.cxFrac - 0.5) * pw, (0.5 - cyFrac) * ph, d / 2 + depth3d / 2);
+        m.rotation.z = -L.angle * Math.PI / 180;
+        signGroup.add(m);
+      });
     });
   }
 

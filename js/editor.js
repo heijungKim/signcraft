@@ -143,12 +143,14 @@ window.Editor = (function () {
       .filter((o) => o.type === "textbox" || o.type === "text" || o.type === "i-text")
       .map((o) => {
         const r = o.getBoundingRect(true, true);
+        const lines = (o._textLines && o._textLines.length) ? o._textLines.map((l) => l.join("")) : [o.text || ""];
+        const lineH = o.fontSize * (o.lineHeight || 1.16) * (o.scaleY || 1);
         return {
-          text: o.text || "",
-          cxFrac: (r.left + r.width / 2) / Wc,
-          cyFrac: (r.top + r.height / 2) / Hc,
-          wFrac: r.width / Wc,
-          hFrac: r.height / Hc,        // 실제 표시(bbox) 높이 비율
+          lines,                                          // 자동 줄바꿈된 줄 목록
+          cxFrac: (r.left + r.width / 2) / Wc,            // 중심 x
+          topFrac: r.top / Hc,                            // 윗변 y
+          lineHFrac: lineH / Hc,                          // 줄 높이
+          emFrac: (o.fontSize * (o.scaleY || 1)) / Hc,    // 폰트 크기(em) = 3D 글자 크기
           fill: typeof o.fill === "string" ? o.fill : "#222222",
           angle: o.angle || 0,
           fontFamily: o.fontFamily || "Noto Sans KR",
