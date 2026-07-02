@@ -26,13 +26,13 @@ window.Preview3D = (function () {
     renderer.setSize(w, h);
     wrap.appendChild(renderer.domElement);
 
-    // 조명
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(4, 6, 8); scene.add(key);
-    const rim = new THREE.DirectionalLight(0x88aaff, 0.5); rim.position.set(-6, -2, -4); scene.add(rim);
-    const back = new THREE.DirectionalLight(0xffffff, 0.7); back.position.set(0, 3, -8); scene.add(back); // 후면 보조광(양면 인쇄 확인용)
+    // 조명 — 색 왜곡 최소화(중립 화이트)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const key = new THREE.DirectionalLight(0xffffff, 0.8); key.position.set(4, 6, 8); scene.add(key);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.4); rim.position.set(-6, -2, -4); scene.add(rim);
+    const back = new THREE.DirectionalLight(0xffffff, 0.6); back.position.set(0, 3, -8); scene.add(back); // 후면 보조광(양면 인쇄 확인용)
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.7));
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 0.5));
 
     // 환경 반사맵 — 금속/미러가 반사할 그라데이션(위=밝음, 아래=어두움)
     try {
@@ -76,40 +76,19 @@ window.Preview3D = (function () {
     animate();
   }
 
+  // 전면 재질: 기본은 조명 영향을 받지 않는 무광 평면(디자인 색 그대로 = 에디터와 동일).
+  // 금속/미러만 재질감을 위해 조명 반응 재질 사용.
   function materialParams(spec, map) {
     map = map || texture;
     switch (spec.material) {
-      case "clear": // 투명 아크릴 — 무착색(디자인 색 그대로) + 광택/약간 투명
-        return new THREE.MeshPhysicalMaterial({
-          map, color: 0xffffff, transparent: true, opacity: 0.82,
-          roughness: 0.08, metalness: 0.0, clearcoat: 1, clearcoatRoughness: 0.05,
-          reflectivity: 0.5, side: THREE.DoubleSide,
-        });
-      case "milky": // 유백 아크릴 — 뽀얀 반투명 화이트
-        return new THREE.MeshPhysicalMaterial({
-          map, color: 0xffffff, transparent: true, opacity: 0.92,
-          roughness: 0.5, metalness: 0.0, clearcoat: 0.4,
-        });
-      case "color": // 컬러 아크릴 — 바탕색(텍스처)에 유광 코팅
-        return new THREE.MeshPhysicalMaterial({
-          map, color: 0xffffff,
-          roughness: 0.15, metalness: 0.0, clearcoat: 1, clearcoatRoughness: 0.08,
-        });
-      case "mirror": // 미러 아크릴 — 디자인은 보이되 거울처럼 유광 반사
-        return new THREE.MeshPhysicalMaterial({
-          map, color: 0xffffff, metalness: 0.35, roughness: 0.04,
-          clearcoat: 1, clearcoatRoughness: 0.02, reflectivity: 1, envMapIntensity: 2.0,
-        });
-      case "stainless": // 스테인리스 — 헤어라인 금속(디자인 은은히 비침)
-        return new THREE.MeshStandardMaterial({
-          map, color: 0xd7dce3, metalness: 0.75, roughness: 0.3, envMapIntensity: 1.5,
-        });
-      case "wood": // 우드 — 무광 나무
-        return new THREE.MeshStandardMaterial({ map, color: 0xb98a55, metalness: 0.0, roughness: 0.85 });
-      case "fabric": // 현수막 원단 — 무광 천
-        return new THREE.MeshStandardMaterial({ map, color: 0xffffff, metalness: 0.0, roughness: 0.95, side: THREE.DoubleSide });
-      default:
-        return new THREE.MeshStandardMaterial({ map, roughness: 0.4 });
+      case "mirror": // 미러 아크릴 — 거울 반사(디자인 은은히)
+        return new THREE.MeshStandardMaterial({ map, color: 0xffffff, metalness: 0.55, roughness: 0.05, envMapIntensity: 2.0 });
+      case "stainless": // 스테인리스 — 헤어라인 금속
+        return new THREE.MeshStandardMaterial({ map, color: 0xdfe3e9, metalness: 0.7, roughness: 0.3, envMapIntensity: 1.5 });
+      case "clear": // 투명 아크릴 — 디자인 색 그대로 + 약간 투명
+        return new THREE.MeshBasicMaterial({ map, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+      default: // milky / color / wood / fabric 등 — 디자인 색 그대로(무광 평면)
+        return new THREE.MeshBasicMaterial({ map });
     }
   }
 
@@ -169,34 +148,22 @@ window.Preview3D = (function () {
     const chLetters = (wantChannel && otFont) ? extrudableLetters(spec.letters) : [];
     const useChannel = chLetters.length > 0;
 
-    const baseEmissive = { flex: 0.28, panel: 0.9, round: 0.8, cube: 0.9, truss: 0.25 }[base] || 0;
-    let haloOpacity = 0; const haloColor = 0xfff2d6;
-    if (letter === "halo") haloOpacity = 0.95;
+    // 후광(발광) 표시: 후광채널 또는 발광 베이스(면발광/라운드/큐브)
+    let haloOpacity = 0, haloColor = 0xffffff;
+    if (letter === "halo") { haloOpacity = 0.95; haloColor = 0xfff2d6; }
+    else if (base === "panel" || base === "round" || base === "cube") { haloOpacity = 0.4; haloColor = 0xffffff; }
 
-    // 전면 재질: 채널이면 디자인 없는 깔끔한 바탕색 배커, 아니면 디자인 텍스처
+    // 전면 재질: 채널이면 바탕색 배커, 아니면 디자인 텍스처(디자인 색 그대로 = 무광 평면)
     let faceMat;
     if (useChannel) {
-      const bc = new THREE.Color(spec.boardColor || "#dddddd");
-      faceMat = new THREE.MeshStandardMaterial({
-        color: bc, roughness: 0.5, metalness: 0.1,
-        emissive: bc, emissiveIntensity: letter === "halo" ? 0.1 : baseEmissive * 0.45,
-      });
+      faceMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(spec.boardColor || "#dddddd") });
     } else {
       faceMat = materialParams(spec, texture);
-      let fe = baseEmissive;
-      if (letter === "front") fe = Math.max(fe, 1.35);
-      if (letter === "halo") fe = Math.min(fe, 0.18);
-      if (fe > 0) {
-        faceMat.emissive = new THREE.Color(0xffffff);
-        faceMat.emissiveMap = texture;
-        faceMat.emissiveIntensity = fe;
-        faceMat.needsUpdate = true;
-      }
     }
     const backMat = spec.backDesign ? materialParams(spec, textureBack) : sideMat;
 
     if (kind === "cube") {
-      const capMat = new THREE.MeshStandardMaterial({ color: 0xeef1f6, roughness: 0.4, emissive: 0xffffff, emissiveIntensity: 0.5 });
+      const capMat = new THREE.MeshBasicMaterial({ color: 0xf3f5f9 });
       // +x,-x,+y(top),-y(bottom),+z,-z → 4 옆면에 디자인
       mesh = new THREE.Mesh(geo, [faceMat, faceMat, capMat, capMat, faceMat, faceMat]);
     } else if (kind === "round") {
