@@ -103,6 +103,11 @@ window.Editor = (function () {
     cur().renderAll(); fire();
   }
 
+  function deselectAll() {
+    eachCanvas((c) => { c.discardActiveObject(); c.renderAll(); });
+    fire();
+  }
+
   function deleteSelection() {
     const c = cur();
     c.getActiveObjects().forEach((o) => c.remove(o));
@@ -122,7 +127,7 @@ window.Editor = (function () {
 
   return {
     init, setActiveSide, getActiveSide, setSize, setBg, setBgBoth,
-    addText, addShape, addImage, applyToSelection, deleteSelection, copyFrontToBack,
+    addText, addShape, addImage, applyToSelection, deselectAll, deleteSelection, copyFrontToBack,
     getElement, getCanvas, toSVG, toDataURL,
   };
 })();

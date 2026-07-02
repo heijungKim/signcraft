@@ -1,6 +1,6 @@
 /* ===== 360° 3D 미리보기 (Three.js) ===== */
 window.Preview3D = (function () {
-  let renderer, scene, camera, controls, mesh, texture, textureBack, edgeMesh;
+  let renderer, scene, camera, controls, mesh, texture, textureBack, edgeMesh, glowMesh, glowTex;
   let wrap, inited = false;
   let sourceCanvasEl = null, sourceCanvasBackEl = null;
   let currentSpec = null;
@@ -57,6 +57,16 @@ window.Preview3D = (function () {
 
     maxAniso = renderer.capabilities.getMaxAnisotropy();
     ensureTextures(true);
+
+    // 조명(LED/네온)용 부드러운 후광 텍스처(방사형 그라데이션)
+    const gc = document.createElement("canvas"); gc.width = gc.height = 256;
+    const gx = gc.getContext("2d");
+    const rg = gx.createRadialGradient(128, 128, 8, 128, 128, 128);
+    rg.addColorStop(0, "rgba(255,255,255,1)");
+    rg.addColorStop(0.45, "rgba(255,255,255,0.5)");
+    rg.addColorStop(1, "rgba(255,255,255,0)");
+    gx.fillStyle = rg; gx.fillRect(0, 0, 256, 256);
+    glowTex = new THREE.CanvasTexture(gc);
 
     window.addEventListener("resize", onResize);
     inited = true;
@@ -120,6 +130,7 @@ window.Preview3D = (function () {
     ensureTextures(false);
     disposeMesh(mesh); mesh = null;
     disposeMesh(edgeMesh); edgeMesh = null;
+    disposeMesh(glowMesh); glowMesh = null;
 
     // 실제 비율 유지: 긴 변을 3 유닛으로 정규화
     const ratio = spec.widthMM / spec.heightMM;
@@ -143,6 +154,25 @@ window.Preview3D = (function () {
     const edges = new THREE.EdgesGeometry(geo);
     edgeMesh = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.12, transparent: true }));
     scene.add(edgeMesh);
+
+    // 조명 효과(LED/네온) — 글자(디자인) 자체 발광 + 뒤쪽 후광
+    if (spec.lighting === "led" || spec.lighting === "neon") {
+      const neon = spec.lighting === "neon";
+      faceMat.emissive = new THREE.Color(0xffffff);
+      faceMat.emissiveMap = texture;
+      faceMat.emissiveIntensity = neon ? 1.6 : 0.7;
+      faceMat.needsUpdate = true;
+
+      const glowColor = neon ? 0xff3df0 : 0xffdca6; // 네온: 핑크, LED: 웜화이트
+      const glowGeo = new THREE.PlaneGeometry(pw * 1.6, ph * 2.4);
+      const glowMat = new THREE.MeshBasicMaterial({
+        map: glowTex, color: glowColor, transparent: true,
+        opacity: neon ? 0.9 : 0.5, blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      glowMesh = new THREE.Mesh(glowGeo, glowMat);
+      glowMesh.position.z = -depth / 2 - 0.05;
+      scene.add(glowMesh);
+    }
   }
 
   function disposeMesh(m) {

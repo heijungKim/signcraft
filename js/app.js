@@ -104,6 +104,7 @@
       widthMM: spec.widthMM, heightMM: spec.heightMM,
       material: r.material, boardColor: spec.values.boardColor, thickness: r.depthMM,
       backDesign: doublePrint,
+      lighting: spec.productType === "sign" ? spec.values.lighting : "none",
     });
     Preview3D.refresh();
     updateQuote(spec);
@@ -189,7 +190,7 @@
       document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
       tab.classList.add("active");
       $(tab.dataset.view === "edit" ? "editView" : "view3d").classList.add("active");
-      if (tab.dataset.view === "view3d") setTimeout(() => Preview3D.onShow(), 30);
+      if (tab.dataset.view === "view3d") { Editor.deselectAll(); setTimeout(() => Preview3D.onShow(), 30); }
     })
   );
 
