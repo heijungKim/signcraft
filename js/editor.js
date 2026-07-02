@@ -132,7 +132,8 @@ window.Editor = (function () {
           text: o.text || "",
           cxFrac: (r.left + r.width / 2) / Wc,
           cyFrac: (r.top + r.height / 2) / Hc,
-          hFrac: (o.fontSize * (o.scaleY || 1)) / Hc,
+          wFrac: r.width / Wc,
+          hFrac: r.height / Hc,        // 실제 표시(bbox) 높이 비율
           fill: typeof o.fill === "string" ? o.fill : "#222222",
           angle: o.angle || 0,
         };

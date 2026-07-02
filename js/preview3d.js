@@ -6,7 +6,8 @@ window.Preview3D = (function () {
   let sourceCanvasEl = null, sourceCanvasBackEl = null;
   let currentSpec = null;
   let maxAniso = 1, lastTexW = 0, lastTexH = 0;
-  let font = null; // 3D 채널 글자용 폰트(영문/숫자)
+  let otFont = null, otLoading = false; // 3D 채널 글자 외곽선용 폰트(한글/영문)
+  const OT_URL = "https://cdn.jsdelivr.net/npm/@expo-google-fonts/black-han-sans/BlackHanSans_400Regular.ttf";
 
   function init(canvasEl, canvasBackEl) {
     sourceCanvasEl = canvasEl;
@@ -69,14 +70,6 @@ window.Preview3D = (function () {
     rg.addColorStop(1, "rgba(255,255,255,0)");
     gx.fillStyle = rg; gx.fillRect(0, 0, 256, 256);
     glowTex = new THREE.CanvasTexture(gc);
-
-    // 입체 채널 글자용 폰트 로드(비동기) — 로드되면 현재 스펙으로 재빌드
-    try {
-      new THREE.FontLoader().load(
-        "https://cdn.jsdelivr.net/npm/three@0.136.0/examples/fonts/helvetiker_bold.typeface.json",
-        (f) => { font = f; if (currentSpec) build(currentSpec); }
-      );
-    } catch (e) { /* 폰트 로드 실패해도 평면으로 진행 */ }
 
     window.addEventListener("resize", onResize);
     inited = true;
@@ -170,9 +163,10 @@ window.Preview3D = (function () {
     const sideColor = new THREE.Color(spec.material === "stainless" || spec.material === "mirror" ? 0xbfc6cf : (spec.boardColor || "#dddddd"));
     const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.5, metalness: spec.material === "stainless" ? 0.8 : 0.1 });
 
-    // 채널 글자(영문/숫자) 사용 여부 판단
-    const wantChannel = (letter === "front" || letter === "halo") && spec.letters && font;
-    const chLetters = wantChannel ? extrudableLetters(spec.letters) : [];
+    // 채널 글자 사용 여부 판단(한글/영문 외곽선 압출)
+    const wantChannel = (letter === "front" || letter === "halo") && spec.letters && spec.letters.length;
+    if (wantChannel && !otFont) ensureOtFont();
+    const chLetters = (wantChannel && otFont) ? extrudableLetters(spec.letters) : [];
     const useChannel = chLetters.length > 0;
 
     const baseEmissive = { flex: 0.55, panel: 0.95, round: 0.85, cube: 0.95, truss: 0.45 }[base] || 0;
@@ -239,41 +233,75 @@ window.Preview3D = (function () {
     applyMounting(spec, pw, ph, d);
   }
 
-  // 폰트로 압출 가능한(영문/숫자) 텍스트만 추린 목록
+  // 채널 글자 외곽선 폰트(TTF) 지연 로드
+  function ensureOtFont() {
+    if (otFont || otLoading || !window.opentype) return;
+    otLoading = true;
+    window.opentype.load(OT_URL, (err, f) => {
+      otLoading = false;
+      if (err || !f) { console.warn("3D 글자 폰트 로드 실패:", err); return; }
+      otFont = f;
+      if (currentSpec) build(currentSpec);
+    });
+  }
+
+  // 텍스트가 있는 개체만 추림(한글/영문 모두 외곽선 압출 가능)
   function extrudableLetters(letters) {
-    const glyphs = (font && font.data.glyphs) || {};
-    const ok = (ch) => ch === " " || !!glyphs[ch];
     return letters
-      .map((L) => ({ ...L, txt: [...(L.text || "")].filter(ok).join("").replace(/\s+$/g, "") }))
+      .map((L) => ({ ...L, txt: (L.text || "").replace(/\s+$/g, "") }))
       .filter((L) => L.txt.trim().length);
   }
 
-  // 텍스트 개체를 실제 3D 압출 채널 글자로 생성
+  // 글자 외곽선 → THREE.Shape → 압출 지오메트리
+  function buildTextGeometry(txt, targetH, depth3d) {
+    let shapes = [];
+    try {
+      const d = otFont.getPath(txt, 0, 0, 100).toPathData(2); // 100px 기준 외곽선
+      if (!d) return null;
+      const parsed = new THREE.SVGLoader().parse(`<svg xmlns="http://www.w3.org/2000/svg"><path d="${d}"/></svg>`);
+      parsed.paths.forEach((p) => THREE.SVGLoader.createShapes(p).forEach((s) => shapes.push(s)));
+    } catch (e) { return null; }
+    if (!shapes.length) return null;
+
+    // px 크기 측정 → 3D 스케일 산출
+    const flat = new THREE.ShapeGeometry(shapes);
+    flat.computeBoundingBox();
+    const bb = flat.boundingBox; flat.dispose();
+    const Hpx = Math.max(1, bb.max.y - bb.min.y);
+    const scale = targetH / Hpx;
+    const depthPx = depth3d / scale;
+    const bevelPx = Math.min(depthPx * 0.12, Hpx * 0.02);
+
+    let geo;
+    const opts = { depth: depthPx, bevelEnabled: true, bevelThickness: bevelPx, bevelSize: bevelPx, bevelSegments: 1, curveSegments: 6 };
+    try { geo = new THREE.ExtrudeGeometry(shapes, opts); }
+    catch (e) {
+      try { geo = new THREE.ExtrudeGeometry(shapes, { depth: depthPx, bevelEnabled: false, curveSegments: 6 }); }
+      catch (e2) { return null; }
+    }
+    geo.scale(scale, -scale, scale); // SVG(y-down) → three(y-up)
+    geo.center();
+    return geo;
+  }
+
+  // 텍스트 개체를 실제 3D 압출 채널 글자로 생성(한글/영문)
   function addChannelLetters(spec, pw, ph, d, chLetters) {
-    const depth3d = Math.min(0.24, d * 1.4 + 0.13);
     const front = spec.letter === "front";
+    const depth3d = Math.min(0.26, d * 1.4 + 0.14);
 
     chLetters.forEach((L) => {
-      const size = Math.max(0.06, L.hFrac * ph * 0.92);
-      let geo;
-      try {
-        geo = new THREE.TextGeometry(L.txt, {
-          font, size, height: depth3d, curveSegments: 5,
-          bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.008, bevelSegments: 1,
-        });
-      } catch (e) { return; }
-      geo.center();
+      const targetH = Math.max(0.05, L.hFrac * ph); // 표시 높이(bbox) 기준
+      const geo = buildTextGeometry(L.txt, targetH, depth3d);
+      if (!geo) return;
 
       const col = new THREE.Color(L.fill || "#222222");
       const lum = 0.299 * col.r + 0.587 * col.g + 0.114 * col.b;
       let mat;
       if (front) {
-        // 앞면발광: 글자 면이 발광(어두운 색이면 흰빛)
-        const emis = lum < 0.2 ? new THREE.Color(0xffffff) : col;
-        mat = new THREE.MeshStandardMaterial({ color: col, emissive: emis, emissiveIntensity: 0.95, roughness: 0.3, metalness: 0.0 });
+        const emis = lum < 0.2 ? new THREE.Color(0xffffff) : col; // 앞면발광(어두우면 흰빛)
+        mat = new THREE.MeshStandardMaterial({ color: col, emissive: emis, emissiveIntensity: 0.7, roughness: 0.35, metalness: 0.0, side: THREE.DoubleSide });
       } else {
-        // 후광 채널: 불투명 글자(뒤 후광으로 백라이트 실루엣)
-        mat = new THREE.MeshStandardMaterial({ color: 0x232323, roughness: 0.5, metalness: 0.25 });
+        mat = new THREE.MeshStandardMaterial({ color: 0x232323, roughness: 0.5, metalness: 0.25, side: THREE.DoubleSide }); // 후광 실루엣
       }
 
       const m = new THREE.Mesh(geo, mat);
