@@ -1,18 +1,23 @@
 /* ===== 2D 에디터 (Fabric.js) — 앞면/뒷면 2개 캔버스 관리 ===== */
 window.Editor = (function () {
   let onChange = () => {};
+  let onSelect = () => {};
   const sides = {};        // front / back → fabric.Canvas
   let active = "front";
+  const isText = (o) => o && (o.type === "textbox" || o.type === "i-text" || o.type === "text");
 
   function makeCanvas(id, bg) {
     const c = new fabric.Canvas(id, { backgroundColor: bg, preserveObjectStacking: true });
-    ["object:modified", "object:added", "object:removed", "selection:created", "selection:updated"]
-      .forEach((ev) => c.on(ev, fire));
+    ["object:modified", "object:added", "object:removed"].forEach((ev) => c.on(ev, fire));
+    c.on("selection:created", () => { fire(); onSelect(c.getActiveObject()); });
+    c.on("selection:updated", () => { fire(); onSelect(c.getActiveObject()); });
+    c.on("selection:cleared", () => { fire(); onSelect(null); });
     return c;
   }
 
-  function init(onChangeCb) {
+  function init(onChangeCb, onSelectCb) {
     onChange = onChangeCb || (() => {});
+    onSelect = onSelectCb || (() => {});
     sides.front = makeCanvas("designCanvas", "#f4f4f4");
     sides.back = makeCanvas("designCanvasBack", "#f4f4f4");
     sides.front.wrapperEl.classList.add("side-canvas");
@@ -71,7 +76,7 @@ window.Editor = (function () {
       fontSize: opts.fontSize || 60,
       fill: opts.fill || "#111111",
       fontWeight: opts.bold ? "700" : "400",
-      textAlign: "center", editable: true,
+      textAlign: "center", editable: false, // 캔버스 직접입력 대신 좌측 입력창으로(한글 IME 안전)
     });
     c.add(t).setActiveObject(t); c.renderAll(); fire();
   }
@@ -101,6 +106,16 @@ window.Editor = (function () {
     if (!obj) return;
     Object.entries(props).forEach(([k, v]) => obj.set(k, v));
     cur().renderAll(); fire();
+  }
+
+  // 선택된 텍스트 개체의 문구를 실시간 수정(한글 IME 안전 경로)
+  function setSelectedText(t) {
+    const o = cur().getActiveObject();
+    if (isText(o)) { o.set("text", t); cur().renderAll(); fire(); }
+  }
+  function getSelectedText() {
+    const o = cur().getActiveObject();
+    return isText(o) ? o.text : null;
   }
 
   function deselectAll() {
@@ -148,6 +163,7 @@ window.Editor = (function () {
   return {
     init, setActiveSide, getActiveSide, setSize, setBg, setBgBoth,
     addText, addShape, addImage, applyToSelection, deselectAll, deleteSelection, copyFrontToBack,
+    setSelectedText, getSelectedText,
     getElement, getCanvas, getTextObjects, toSVG, toDataURL,
   };
 })();

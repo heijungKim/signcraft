@@ -154,8 +154,19 @@
       .map(([k, v]) => `<div class="sl"><span>${k}</span><b>${v}</b></div>`).join("");
   }
 
+  // 선택한 텍스트를 좌측 입력창/폰트 컨트롤에 반영(한글 편집 경로)
+  function syncSelection(obj) {
+    if (obj && (obj.type === "textbox" || obj.type === "i-text" || obj.type === "text")) {
+      $("textInput").value = obj.text || "";
+      if (obj.fontFamily) $("fontFamily").value = obj.fontFamily;
+      if (obj.fontSize) $("fontSize").value = Math.round(obj.fontSize);
+      if (typeof obj.fill === "string" && obj.fill[0] === "#") $("fontColor").value = obj.fill;
+      $("fontBold").checked = obj.fontWeight === "700" || obj.fontWeight === "bold";
+    }
+  }
+
   // ---- 초기화 ----
-  Editor.init(() => Preview3D.refresh());
+  Editor.init(() => Preview3D.refresh(), syncSelection);
   state.values = PRODUCTS.defaults("acrylic");
   Editor.setBgBoth(state.values.boardColor);
   Editor.setSize(state.widthMM, state.heightMM);
@@ -188,6 +199,10 @@
   $("copyToBack").addEventListener("click", () => { Editor.copyFrontToBack(); Preview3D.refresh(); });
 
   // ---- 텍스트 ----
+  // 선택된 텍스트가 있으면 입력창으로 실시간 수정(한글 IME 정상 동작)
+  $("textInput").addEventListener("input", () => {
+    if (Editor.getSelectedText() !== null) Editor.setSelectedText($("textInput").value);
+  });
   $("addText").addEventListener("click", () => {
     Editor.addText($("textInput").value || "텍스트", {
       fontFamily: $("fontFamily").value, fontSize: +$("fontSize").value,

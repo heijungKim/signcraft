@@ -79,11 +79,11 @@ window.Preview3D = (function () {
   function materialParams(spec, map) {
     map = map || texture;
     switch (spec.material) {
-      case "clear": // 투명 아크릴 — 은은한 하늘빛 틴트 + 광택, 글자는 보이게
+      case "clear": // 투명 아크릴 — 무착색(디자인 색 그대로) + 광택/약간 투명
         return new THREE.MeshPhysicalMaterial({
-          map, color: 0xcfe8ff, transparent: true, opacity: 0.55,
+          map, color: 0xffffff, transparent: true, opacity: 0.82,
           roughness: 0.08, metalness: 0.0, clearcoat: 1, clearcoatRoughness: 0.05,
-          reflectivity: 0.6, side: THREE.DoubleSide,
+          reflectivity: 0.5, side: THREE.DoubleSide,
         });
       case "milky": // 유백 아크릴 — 뽀얀 반투명 화이트
         return new THREE.MeshPhysicalMaterial({
@@ -169,7 +169,7 @@ window.Preview3D = (function () {
     const chLetters = (wantChannel && otFont) ? extrudableLetters(spec.letters) : [];
     const useChannel = chLetters.length > 0;
 
-    const baseEmissive = { flex: 0.55, panel: 0.95, round: 0.85, cube: 0.95, truss: 0.45 }[base] || 0;
+    const baseEmissive = { flex: 0.28, panel: 0.9, round: 0.8, cube: 0.9, truss: 0.25 }[base] || 0;
     let haloOpacity = 0; const haloColor = 0xfff2d6;
     if (letter === "halo") haloOpacity = 0.95;
 
